@@ -86,7 +86,7 @@ def parse_args():
     parser.add_argument("--blocks", required=True, type=pathlib.Path)
     parser.add_argument("--taxonomy3", required=True, type=pathlib.Path)
     parser.add_argument("--output", required=True, type=pathlib.Path)
-    parser.add_argument("--per-block", type=int, default=200)
+    parser.add_argument("--per-block", type=int, default=2000)
     return parser.parse_args()
 
 

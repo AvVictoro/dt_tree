@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-08-26T08:41:18.329Z",
+  "generatedAt": "2026-08-26T09:58:23.827Z",
   "mode": "demo",
   "status": "PASS_DEMO",
   "controlIndicators": 1606756,
-  "queryableIndicators": 3000,
+  "queryableIndicators": 28355,
   "fullDataReady": false,
-  "fixtureIndicators": 3000,
+  "fixtureIndicators": 28355,
   "checks": [
     {
       "name": "control_total_indicators",
@@ -21,32 +21,32 @@
       "name": "every_block_represented",
       "passed": true,
       "details": {
-        "BLOCK_01_DOMCLICK": 200,
-        "BLOCK_02_RUSSIA_MACRO": 200,
-        "BLOCK_03_RUSSIA_REGIONS": 200,
-        "BLOCK_04_PRICES": 200,
-        "BLOCK_05_REAL_SECTOR": 200,
-        "BLOCK_06_REAL_ESTATE": 200,
-        "BLOCK_07_PUBLIC_FINANCE": 200,
-        "BLOCK_08_BANKING": 200,
-        "BLOCK_09_FIN_MARKETS": 200,
-        "BLOCK_10_EXTERNAL": 200,
-        "BLOCK_11_WORLD_ECONOMY": 200,
-        "BLOCK_12_LABOR_SOCIAL": 200,
-        "BLOCK_13_HUMAN_CAPITAL": 200,
-        "BLOCK_14_ENERGY_AGRI": 200,
-        "BLOCK_15_INFRA_ESG": 200
+        "BLOCK_01_DOMCLICK": 2000,
+        "BLOCK_02_RUSSIA_MACRO": 355,
+        "BLOCK_03_RUSSIA_REGIONS": 2000,
+        "BLOCK_04_PRICES": 2000,
+        "BLOCK_05_REAL_SECTOR": 2000,
+        "BLOCK_06_REAL_ESTATE": 2000,
+        "BLOCK_07_PUBLIC_FINANCE": 2000,
+        "BLOCK_08_BANKING": 2000,
+        "BLOCK_09_FIN_MARKETS": 2000,
+        "BLOCK_10_EXTERNAL": 2000,
+        "BLOCK_11_WORLD_ECONOMY": 2000,
+        "BLOCK_12_LABOR_SOCIAL": 2000,
+        "BLOCK_13_HUMAN_CAPITAL": 2000,
+        "BLOCK_14_ENERGY_AGRI": 2000,
+        "BLOCK_15_INFRA_ESG": 2000
       }
     },
     {
       "name": "series_ids_unique",
       "passed": true,
-      "details": 3000
+      "details": 28355
     },
     {
       "name": "mnemonics_unique",
       "passed": true,
-      "details": 3000
+      "details": 28355
     },
     {
       "name": "exact_mnemonic",
@@ -56,22 +56,22 @@
     {
       "name": "taxonomy4_complete",
       "passed": true,
-      "details": 3000
+      "details": 28355
     },
     {
       "name": "taxonomy3_complete",
       "passed": true,
-      "details": 3000
+      "details": 28355
     },
     {
       "name": "no_synthetic_observations",
       "passed": true,
-      "details": 3000
+      "details": 28355
     },
     {
       "name": "same_name_variants",
       "passed": true,
-      "details": 334
+      "details": 3715
     }
   ]
 }
