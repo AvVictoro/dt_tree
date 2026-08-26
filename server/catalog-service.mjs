@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { gunzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { decodeCursor, encodeCursor, rankIndicators, searchableText } from '../catalog/lib/search.mjs';
 import { displayBlockName } from './label-overrides.mjs';
@@ -8,7 +9,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 let fixturePromise;
 
 async function loadFixture() {
-  fixturePromise ||= fs.readFile(path.join(root, 'catalog/demo/catalog-demo.json'), 'utf8').then(JSON.parse).then(data => {
+  fixturePromise ||= fs.readFile(path.join(root, 'catalog/data/catalog-data.json.gz')).then(buffer => JSON.parse(gunzipSync(buffer).toString('utf8'))).then(data => {
     data.indicators.forEach(indicator => { indicator._searchText = searchableText(indicator); });
     data.blocks = data.blocks.map(block => {
       const sourceName = block.sourceName || block.name;
@@ -100,15 +101,15 @@ export async function handleCatalogRequest({ method = 'GET', pathname, searchPar
   if (method !== 'GET' && method !== 'POST') return json({ error: 'Method not allowed' }, 405);
   const data = await loadFixture();
   const route = pathname.replace(/^\/api\/catalog\/?/, '').replace(/\/$/, '');
-  if (!route || route === 'health') return json({ ok: true, mode: 'demo', indicators: data.indicators.length });
+  if (!route || route === 'health') return json({ ok: true, mode: 'file', indicators: data.indicators.length });
   if (route === 'manifest') return json({
-    mode: 'demo',
+    mode: 'file',
     controlIndicators: Number(data.manifest?.controlIndicators || data.manifest?.totals?.indicators || 1_606_756),
     queryableIndicators: Number(data.manifest?.queryableIndicators || data.indicators.length),
     dataVersion: data.manifest?.datasetVersion || 'taxonomy-final-2026-08-25',
     fullDataReady: false,
     taxonomyMode: 'four-level',
-    threeLevelAvailable: true,
+    threeLevelAvailable: false,
     totals: data.manifest?.totals || {},
   });
   if (route === 'blocks') return json({ items: data.blocks });

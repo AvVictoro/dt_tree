@@ -6,6 +6,7 @@
 node_modules
 dist
 catalog-input/
+catalog/data/catalog-data.json
 catalog-reports/private/
 *.zip
 *.xlsx

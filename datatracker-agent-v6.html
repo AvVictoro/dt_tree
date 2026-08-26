@@ -9293,6 +9293,7 @@
       <div class="nav-item" data-view="catalog-1"><span class="ic">⌘</span> Каталог 1</div>
       <div class="nav-item" data-view="catalog-2"><span class="ic">⎇</span> Каталог 2</div>
       <div class="nav-item" data-view="catalog-3"><span class="ic">⌕</span> Каталог 3</div>
+      <div class="nav-item" data-view="catalog-4"><span class="ic">⇢</span> Каталог 4</div>
       <div id="pinned-workspaces-list" hidden></div>
       <div id="fav-list" hidden></div>
 
@@ -9623,6 +9624,7 @@
         <section class="view" id="view-catalog-1"><div class="catalog-experiment" id="catalog-mount-catalog-1"></div></section>
         <section class="view" id="view-catalog-2"><div class="catalog-experiment" id="catalog-mount-catalog-2"></div></section>
         <section class="view" id="view-catalog-3"><div class="catalog-experiment" id="catalog-mount-catalog-3"></div></section>
+        <section class="view" id="view-catalog-4"><div class="catalog-experiment" id="catalog-mount-catalog-4"></div></section>
         <section class="view" id="view-catalog-indicator"><div class="catalog-experiment" id="catalog-mount-catalog-indicator"></div></section>
 
 
@@ -12477,6 +12479,7 @@
       'catalog-1': { label: 'Иерархический каталог', sugg: [] },
       'catalog-2': { label: 'Конструктор выборки', sugg: [] },
       'catalog-3': { label: 'Прямой поиск', sugg: [] },
+      'catalog-4': { label: 'Навигация и поиск', sugg: [] },
       'catalog-indicator': { label: 'Карточка индикатора', sugg: [] },
       indicator: { label: 'Индикатор', sugg: ['Построй ARIMA-прогноз', 'Корреляция с ликвидностью', 'Чем отличается от прогноза ФК?'] },
       workspace: { label: 'Рабочая область', sugg: ['Сравни динамику графиков', 'Собери выводы', 'Добавь прогноз ОФЗ на 6 мес'] },
@@ -12495,6 +12498,7 @@
   'catalog-1': 'Каталог 1',
   'catalog-2': 'Каталог 2',
   'catalog-3': 'Каталог 3',
+  'catalog-4': 'Каталог 4',
   'catalog-indicator': 'Каталог / Индикатор',
   indicator: 'Индикатор',
   workspace: 'Рабочие области',
@@ -14208,7 +14212,7 @@
       const appEl = document.querySelector('.app');
       appEl.classList.remove('mobile-sidebar-open', 'mobile-copilot-open');
       if (window.matchMedia('(max-width: 900px)').matches) applyShellPanelState(readShellPanelState());
-      if (view === 'chat' || view === 'catalog-1' || view === 'catalog-2' || view === 'catalog-3' || view === 'catalog-indicator') {
+      if (view === 'chat' || view === 'catalog-1' || view === 'catalog-2' || view === 'catalog-3' || view === 'catalog-4' || view === 'catalog-indicator') {
         appEl.classList.add('hide-copilot');
       } else {
         appEl.classList.remove('hide-copilot');
@@ -14222,7 +14226,7 @@
 
       if (view === 'home') { renderHome(); }
       if (view === 'catalog') { renderTree(document.getElementById('cat-input').value); updateSelbar(); }
-      if ((view === 'catalog-1' || view === 'catalog-2' || view === 'catalog-3' || view === 'catalog-indicator') && window.catalogApp) { window.catalogApp.render(view); }
+      if ((view === 'catalog-1' || view === 'catalog-2' || view === 'catalog-3' || view === 'catalog-4' || view === 'catalog-indicator') && window.catalogApp) { window.catalogApp.render(view); }
       if (view === 'indicator') { renderIndChart(); }
       if (view === 'workspace') {/* render ws detail is handled by openWorkspaceDetail */ }
       if (view === 'workspaces') { renderWorkspacesList(); }
@@ -16066,7 +16070,7 @@ function renderLiqDiag() {
       const dom = document.getElementById(`liq-w-chart-${idx}`);
       if (!dom || !window.echarts) return;
       
-      // We will mock the data array based on metric for the widget preview
+      // Build the preview series for the selected metric
       let chartData = [];
       let color = '#2080ff';
       if (block.metric === 'balance') { chartData = [-1.5, -1.8, -2.1, -1.9, -1.6, -1.4, -1.2]; color = '#16b364'; }

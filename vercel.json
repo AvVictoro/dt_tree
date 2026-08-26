@@ -2,7 +2,7 @@
   "cleanUrls": false,
   "functions": {
     "api/catalog/[...route].mjs": {
-      "includeFiles": "catalog/demo/catalog-demo.json",
+      "includeFiles": "catalog/data/catalog-data.json.gz",
       "memory": 1024,
       "maxDuration": 60
     }

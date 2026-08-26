@@ -10,17 +10,17 @@ async function get(pathname) {
 test('manifest exposes full control totals and local fixture size', async () => {
   const result = await get('/api/catalog/manifest');
   assert.equal(result.status, 200);
-  assert.equal(result.payload.mode, 'demo');
+  assert.equal(result.payload.mode, 'file');
   assert.equal(result.payload.controlIndicators, 1_606_756);
   assert.equal(Number.isInteger(result.payload.queryableIndicators), true);
-  assert.ok(result.payload.queryableIndicators >= 270);
+  assert.ok(result.payload.queryableIndicators >= 65_000);
   assert.equal(result.payload.fullDataReady, false);
 });
 
 test('all fifteen blocks are available', async () => {
   const result = await get('/api/catalog/blocks');
   assert.equal(result.payload.items.length, 15);
-  assert.ok(result.payload.items.every(block => block.demoSeries > 0));
+  assert.ok(result.payload.items.every(block => block.availableSeries > 0));
   const russianEconomy = result.payload.items.find(block => block.alias === 'BLOCK_02_RUSSIA_MACRO');
   assert.equal(russianEconomy.name, 'Российская экономика');
   assert.equal(russianEconomy.sourceName, 'Российская экономика: макроядро');
@@ -37,6 +37,14 @@ test('block-only query requests refinement instead of mass output', async () => 
   assert.equal(result.payload.requiresRefinement, true);
   assert.equal(result.payload.items.length, 0);
   assert.ok(result.payload.total > 0);
+});
+
+test('catalog 4 may explicitly render an already selected block', async () => {
+  const result = await get('/api/catalog/indicators?block=BLOCK_09_FIN_MARKETS&allowBlockOnly=1');
+  assert.equal(result.payload.requiresRefinement, false);
+  assert.equal(result.payload.total, 2_292);
+  assert.equal(result.payload.items.length, 50);
+  assert.ok(result.payload.items.every(item => item.blocks.all.some(block => block.alias === 'BLOCK_09_FIN_MARKETS')));
 });
 
 test('empty filter builder does not dump the complete catalog', async () => {

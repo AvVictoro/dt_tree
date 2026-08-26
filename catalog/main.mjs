@@ -5,6 +5,7 @@ const VIEW_TITLES = {
   'catalog-1': ['Каталог 1', 'Последовательный переход от блока данных к конкретной группе индикаторов'],
   'catalog-2': ['Каталог 2', 'Конструктор выборки по тематике и атрибутам индикаторов'],
   'catalog-3': ['Каталог 3', 'Прямой поиск по названию, мнемонике и метаданным'],
+  'catalog-4': ['Каталог 4', 'Последовательная навигация с быстрым переходом к поиску по выбранному разделу'],
 };
 const LEVELS = ['topic', 'theme', 'subtheme', 'subtheme2'];
 const LEVEL_LABELS = { topic: 'Топики', theme: 'Темы', subtheme: 'Сабтемы', subtheme2: 'Сабтемы 2' };
@@ -29,7 +30,7 @@ function currentState(view) { return appState.get(view) || {}; }
 
 function header(view) {
   const [title, subtitle] = VIEW_TITLES[view];
-  return `<div class="catalog-exp-head"><div><h1>${title}</h1><p>${subtitle}</p></div><span class="catalog-demo-badge">Доступно · ${fmt(manifest?.queryableIndicators)}</span></div>`;
+  return `<div class="catalog-exp-head"><div><h1>${title}</h1><p>${subtitle}</p></div><span class="catalog-status-badge">Доступно · ${fmt(manifest?.queryableIndicators)}</span></div>`;
 }
 
 function searchBox(value = '', placeholder = 'Название, мнемоника или метаданные…', id = 'catalog-query') {
@@ -37,7 +38,7 @@ function searchBox(value = '', placeholder = 'Название, мнемоник
 }
 
 function blockRows() {
-  return `<section class="catalog1-level" data-active-level="block"><div class="catalog1-level-head"><span>Блоки данных</span><small>${fmt(blocks.length)}</small></div><div class="catalog1-list">${blocks.map(block => `<button class="catalog1-row" data-block="${esc(block.alias)}"><span class="catalog1-chevron">›</span><span><b>${esc(block.name)}</b><small>${esc(block.description)}</small></span><em>${fmt(block.demoSeries ?? block.totalSeries)}</em></button>`).join('')}</div></section>`;
+  return `<section class="catalog1-level" data-active-level="block"><div class="catalog1-level-head"><span>Блоки данных</span><small>${fmt(blocks.length)}</small></div><div class="catalog1-list">${blocks.map(block => `<button class="catalog1-row" data-block="${esc(block.alias)}"><span class="catalog1-chevron">›</span><span><b>${esc(block.name)}</b><small>${esc(block.description)}</small></span><em>${fmt(block.availableSeries ?? block.totalSeries)}</em></button>`).join('')}</div></section>`;
 }
 
 function card(indicator, fromView, fromState) {
@@ -145,8 +146,8 @@ function bindBreadcrumb(root, view) {
   }));
 }
 
-function levelRows(level, items) {
-  return `<section class="catalog1-level" data-active-level="${level}"><div class="catalog1-level-head"><span>${LEVEL_LABELS[level]}</span><small>${fmt(items.length)}</small></div><div class="catalog1-list">${items.map(node => `<button class="catalog1-row" data-level="${level}" data-alias="${esc(node.alias)}" data-geography="${esc(node.geographyCode || '')}"><span class="catalog1-chevron">›</span><span><b>${esc(node.name)}</b></span><em>${fmt(node.count)}</em></button>`).join('') || '<div class="catalog-empty"><div><b>Нет доступных разделов</b>Для выбранного пути не найден следующий уровень.</div></div>'}</div></section>`;
+function levelRows(level, items, { showSearchJump = false } = {}) {
+  return `<section class="catalog1-level" data-active-level="${level}"><div class="catalog1-level-head"><span>${LEVEL_LABELS[level]}</span><span class="catalog1-level-actions"><small>${fmt(items.length)}</small>${showSearchJump ? '<button class="catalog-search-jump" data-jump-search>Перейти к поиску</button>' : ''}</span></div><div class="catalog1-list">${items.map(node => `<button class="catalog1-row" data-level="${level}" data-alias="${esc(node.alias)}" data-geography="${esc(node.geographyCode || '')}"><span class="catalog1-chevron">›</span><span><b>${esc(node.name)}</b></span><em>${fmt(node.count)}</em></button>`).join('') || '<div class="catalog-empty"><div><b>Нет доступных разделов</b>Для выбранного пути не найден следующий уровень.</div></div>'}</div></section>`;
 }
 
 function selectField(dimension, items, state, label) {
@@ -156,8 +157,7 @@ function selectField(dimension, items, state, label) {
   return `<label class="catalog-select"><span>${label}</span><select data-leaf-filter="${dimension}"><option value="">Все</option>${options.map(item => `<option value="${esc(item.value)}" ${selected === item.value ? 'selected' : ''}>${esc(item.label || item.value)} (${fmt(item.count)})</option>`).join('')}</select></label>`;
 }
 
-async function renderCatalog1() {
-  const view = 'catalog-1';
+async function renderCatalog1(view = 'catalog-1', { searchJump = false } = {}) {
   const root = mount(view);
   const state = currentState(view);
   await ensurePathNames(state);
@@ -170,7 +170,8 @@ async function renderCatalog1() {
   const stage = root.querySelector('#catalog1-stage');
   if (level) {
     const items = await loadLevel(level, state);
-    stage.innerHTML = levelRows(level, items);
+    stage.innerHTML = levelRows(level, items, { showSearchJump: searchJump });
+    stage.querySelector('[data-jump-search]')?.addEventListener('click', () => setState(view, { mode: 'search', cursor: null }));
     stage.querySelectorAll('[data-level]').forEach(button => button.addEventListener('click', () => {
       const selectedLevel = button.dataset.level;
       const patch = clearFrom(LEVELS[LEVELS.indexOf(selectedLevel) + 1], { [selectedLevel]: button.dataset.alias, cursor: null });
@@ -232,15 +233,20 @@ function bindFacetPanels(root, view) {
   }));
 }
 
-async function renderCatalog2() {
-  const view = 'catalog-2';
+async function renderCatalog2(view = 'catalog-2', { embedded = false, allowBlockOnly = false } = {}) {
   const root = mount(view);
   const state = currentState(view);
-  root.innerHTML = `${header(view)}<div class="catalog-chipbar"><button class="catalog-chip ${!state.block ? 'active' : ''}" data-block="">Все блоки</button>${blocks.map(block => `<button class="catalog-chip ${asList(state.block).includes(block.alias) ? 'active' : ''}" data-block="${esc(block.alias)}">${esc(block.name)}</button>`).join('')}</div>${searchBox(state.q)}<div class="catalog-layout three"><aside class="catalog-panel sticky" id="catalog-attribute-filter"><div class="catalog-empty">Загрузка фильтров…</div></aside><main id="catalog-filter-results"><div class="catalog-empty">Подготавливаю выборку…</div></main><aside class="catalog-panel sticky" id="catalog-taxonomy-filter"><div class="catalog-empty">Загрузка тематик…</div></aside></div>`;
-  root.querySelectorAll('[data-block]').forEach(button => button.addEventListener('click', () => setState(view, { block: button.dataset.block || null, cursor: null })));
+  const context = [state.block, ...LEVELS.map(level => state[level])].filter(Boolean).map(alias => nodeCache.get(alias)?.name || alias).join(' › ');
+  const modeBar = embedded ? `<div class="catalog-modebar"><button data-catalog4-back>← Вернуться к навигации</button><span>${esc(context)}</span></div>` : '';
+  root.innerHTML = `${header(view)}${modeBar}<div class="catalog-chipbar"><button class="catalog-chip ${!state.block ? 'active' : ''}" data-block="">Все блоки</button>${blocks.map(block => `<button class="catalog-chip ${asList(state.block).includes(block.alias) ? 'active' : ''}" data-block="${esc(block.alias)}">${esc(block.name)}</button>`).join('')}</div>${searchBox(state.q)}<div class="catalog-layout three"><aside class="catalog-panel sticky" id="catalog-attribute-filter"><div class="catalog-empty">Загрузка фильтров…</div></aside><main id="catalog-filter-results"><div class="catalog-empty">Подготавливаю выборку…</div></main><aside class="catalog-panel sticky" id="catalog-taxonomy-filter"><div class="catalog-empty">Загрузка тематик…</div></aside></div>`;
+  root.querySelector('[data-catalog4-back]')?.addEventListener('click', () => setState(view, { mode: null, cursor: null }));
+  root.querySelectorAll('[data-block]').forEach(button => button.addEventListener('click', () => setState(view, clearFrom('topic', { block: button.dataset.block || null, geography: null, cursor: null }))));
   const input = root.querySelector('#catalog-query');
   input.addEventListener('keydown', event => { if (event.key === 'Enter') setState(view, { q: input.value.trim(), cursor: null }); });
-  const [facetResponse, resultResponse] = await Promise.all([catalogApi.facets(apiParams(state)), catalogApi.indicators(apiParams(state))]);
+  const [facetResponse, resultResponse] = await Promise.all([
+    catalogApi.facets(apiParams(state)),
+    catalogApi.indicators({ ...apiParams(state), ...(allowBlockOnly ? { allowBlockOnly: 1 } : {}) }),
+  ]);
   const facets = facetResponse.facets || {};
   const attributeRoot = root.querySelector('#catalog-attribute-filter');
   attributeRoot.innerHTML = `<div class="catalog-panel-title">Атрибуты</div>${facetGroup(view, 'geography', facets.geography, state, { searchable: true })}${facetGroup(view, 'frequency', facets.frequency, state)}${facetGroup(view, 'unit', facets.unit, state, { searchable: true })}${facetGroup(view, 'source', facets.source, state, { searchable: true })}`;
@@ -300,7 +306,7 @@ async function renderIndicator() {
   const indicator = await catalogApi.indicator(state.id);
   const taxonomy = indicator.taxonomy4;
   const backLabel = VIEW_TITLES[state.from]?.[0] || 'Каталог 1';
-  root.innerHTML = `<div class="catalog-detail"><button class="catalog-detail-back">← Вернуться: ${esc(backLabel)}</button><section class="catalog-detail-hero"><span class="catalog-demo-badge">${esc(manifest.dataVersion)}</span><h1>${esc(indicator.name)}</h1><div class="catalog-detail-code">${esc(indicator.mnemonic)}</div><div class="catalog-detail-grid"><div class="catalog-detail-field"><small>Источник</small><b>${esc(indicator.source?.label)}</b></div><div class="catalog-detail-field"><small>География</small><b>${esc(indicator.geography?.name || indicator.geography?.code)}</b></div><div class="catalog-detail-field"><small>Частота</small><b>${esc(indicator.frequency?.label)}</b></div><div class="catalog-detail-field"><small>Единица</small><b>${esc(indicator.unit?.code)}</b></div><div class="catalog-detail-field"><small>Код показателя</small><b>${esc(indicator.indicatorCode)}</b></div><div class="catalog-detail-field"><small>Концепт</small><b>${esc(indicator.conceptKey)}</b></div></div><div class="catalog-path"><b>Тематический путь:</b> ${esc(taxonomy?.path || [taxonomy?.topic?.name, taxonomy?.theme?.name, taxonomy?.subtheme?.name, taxonomy?.subtheme2?.name].filter(Boolean).join(' › '))}<br><b>Блоки:</b> ${esc((indicator.blocks?.all || []).map(block => block.name).join(' · '))}</div>${indicator.availability?.hasTimeSeries ? '<div id="catalog-indicator-chart"></div>' : '<div class="catalog-no-chart">Для этой записи доступны классификационные метаданные. Наблюдения временного ряда отсутствуют, поэтому график не строится.</div>'}</section></div>`;
+  root.innerHTML = `<div class="catalog-detail"><button class="catalog-detail-back">← Вернуться: ${esc(backLabel)}</button><section class="catalog-detail-hero"><span class="catalog-status-badge">${esc(manifest.dataVersion)}</span><h1>${esc(indicator.name)}</h1><div class="catalog-detail-code">${esc(indicator.mnemonic)}</div><div class="catalog-detail-grid"><div class="catalog-detail-field"><small>Источник</small><b>${esc(indicator.source?.label)}</b></div><div class="catalog-detail-field"><small>География</small><b>${esc(indicator.geography?.name || indicator.geography?.code)}</b></div><div class="catalog-detail-field"><small>Частота</small><b>${esc(indicator.frequency?.label)}</b></div><div class="catalog-detail-field"><small>Единица</small><b>${esc(indicator.unit?.code)}</b></div><div class="catalog-detail-field"><small>Код показателя</small><b>${esc(indicator.indicatorCode)}</b></div><div class="catalog-detail-field"><small>Концепт</small><b>${esc(indicator.conceptKey)}</b></div></div><div class="catalog-path"><b>Тематический путь:</b> ${esc(taxonomy?.path || [taxonomy?.topic?.name, taxonomy?.theme?.name, taxonomy?.subtheme?.name, taxonomy?.subtheme2?.name].filter(Boolean).join(' › '))}<br><b>Блоки:</b> ${esc((indicator.blocks?.all || []).map(block => block.name).join(' · '))}</div>${indicator.availability?.hasTimeSeries ? '<div id="catalog-indicator-chart"></div>' : '<div class="catalog-no-chart">Для этой записи доступны классификационные метаданные. Наблюдения временного ряда отсутствуют, поэтому график не строится.</div>'}</section></div>`;
   root.querySelector('.catalog-detail-back').addEventListener('click', () => {
     let returnState = {};
     try { returnState = JSON.parse(state.returnState || '{}'); } catch { returnState = {}; }
@@ -314,9 +320,13 @@ async function render(view) {
   root.innerHTML = '<div class="catalog-empty">Загрузка каталога…</div>';
   try {
     await initData();
-    if (view === 'catalog-1') await renderCatalog1();
-    if (view === 'catalog-2') await renderCatalog2();
+    if (view === 'catalog-1') await renderCatalog1(view);
+    if (view === 'catalog-2') await renderCatalog2(view);
     if (view === 'catalog-3') await renderCatalog3();
+    if (view === 'catalog-4') {
+      if (currentState(view).mode === 'search') await renderCatalog2(view, { embedded: true, allowBlockOnly: true });
+      else await renderCatalog1(view, { searchJump: true });
+    }
     if (view === 'catalog-indicator') await renderIndicator();
   } catch (error) {
     root.innerHTML = `<div class="catalog-error"><b>Каталог не загрузился.</b> ${esc(error.message)}</div>`;
@@ -333,7 +343,7 @@ async function activateRoute() {
 
 document.addEventListener('click', event => {
   const item = event.target.closest('.nav-item[data-view]');
-  if (!item || !['catalog-1', 'catalog-2', 'catalog-3'].includes(item.dataset.view)) return;
+  if (!item || !['catalog-1', 'catalog-2', 'catalog-3', 'catalog-4'].includes(item.dataset.view)) return;
   event.preventDefault();
   event.stopImmediatePropagation();
   navigate(item.dataset.view, currentState(item.dataset.view));

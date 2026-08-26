@@ -4,8 +4,8 @@ Local Node.js API over the bundled real-data fixture; 30 iterations after proces
 
 | Scenario | Median, ms | P95, ms | Max, ms |
 |---|---:|---:|---:|
-| manifest | 0 | 0.06 | 560.8 |
-| exact mnemonic | 583.35 | 589.38 | 592.02 |
-| text search | 603.93 | 637.53 | 677.77 |
-| facets | 264.61 | 288.77 | 297.44 |
-| hierarchy | 25.73 | 26.04 | 26.91 |
+| manifest | 0 | 0.06 | 911.42 |
+| exact mnemonic | 1336.98 | 1345.22 | 1346.15 |
+| text search | 1384.57 | 1393.35 | 1437.21 |
+| facets | 555.73 | 567.43 | 568.47 |
+| hierarchy | 55.2 | 56.36 | 58.18 |

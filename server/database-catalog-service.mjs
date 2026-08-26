@@ -93,7 +93,7 @@ export async function handleDatabaseCatalogRequest({ method = 'GET', pathname, s
     return json({ mode: 'database', controlIndicators, queryableIndicators, dataVersion: rows[0].version_label, fullDataReady: queryableIndicators === controlIndicators, taxonomyMode: rows[0].taxonomy_levels === 3 ? 'three-level' : 'four-level', threeLevelAvailable: true, totals: rows[0].control_totals });
   }
   if (route === 'blocks') {
-    const { rows } = await db.query(`SELECT alias,coalesce(source_name,name) "sourceName",name,description,primary_indicator_count "primarySeries",membership_indicator_count "totalSeries",primary_indicator_count "demoSeries" FROM catalog_data_block WHERE dataset_version_id=(SELECT id FROM catalog_dataset_version WHERE status='active') ORDER BY sort_order`);
+    const { rows } = await db.query(`SELECT alias,coalesce(source_name,name) "sourceName",name,description,primary_indicator_count "primarySeries",membership_indicator_count "totalSeries",primary_indicator_count "availableSeries" FROM catalog_data_block WHERE dataset_version_id=(SELECT id FROM catalog_dataset_version WHERE status='active') ORDER BY sort_order`);
     return json({ items: rows.map(row => ({ ...row, name: displayBlockName(row.alias, row.sourceName) })) });
   }
   if (route === 'hierarchy') {
