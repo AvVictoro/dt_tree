@@ -13,7 +13,7 @@ test('manifest exposes full control totals and local fixture size', async () => 
   assert.equal(result.payload.mode, 'file');
   assert.equal(result.payload.controlIndicators, 1_606_756);
   assert.equal(Number.isInteger(result.payload.queryableIndicators), true);
-  assert.ok(result.payload.queryableIndicators >= 65_000);
+  assert.ok(result.payload.queryableIndicators >= 94_000);
   assert.equal(result.payload.fullDataReady, false);
 });
 

@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-08-26T11:35:18.426Z",
+  "generatedAt": "2026-08-26T11:46:13.801Z",
   "mode": "file",
   "status": "PASS_FILE",
   "controlIndicators": 1606756,
-  "queryableIndicators": 65123,
+  "queryableIndicators": 94232,
   "fullDataReady": false,
-  "fixtureIndicators": 65123,
+  "fixtureIndicators": 94232,
   "checks": [
     {
       "name": "control_total_indicators",
@@ -21,32 +21,32 @@
       "name": "every_block_represented",
       "passed": true,
       "details": {
-        "BLOCK_01_DOMCLICK": 5000,
+        "BLOCK_01_DOMCLICK": 6609,
         "BLOCK_02_RUSSIA_MACRO": 355,
-        "BLOCK_03_RUSSIA_REGIONS": 5000,
-        "BLOCK_04_PRICES": 5000,
-        "BLOCK_05_REAL_SECTOR": 5000,
+        "BLOCK_03_RUSSIA_REGIONS": 7500,
+        "BLOCK_04_PRICES": 7500,
+        "BLOCK_05_REAL_SECTOR": 7500,
         "BLOCK_06_REAL_ESTATE": 2476,
-        "BLOCK_07_PUBLIC_FINANCE": 5000,
-        "BLOCK_08_BANKING": 5000,
+        "BLOCK_07_PUBLIC_FINANCE": 7500,
+        "BLOCK_08_BANKING": 7500,
         "BLOCK_09_FIN_MARKETS": 2292,
-        "BLOCK_10_EXTERNAL": 5000,
-        "BLOCK_11_WORLD_ECONOMY": 5000,
-        "BLOCK_12_LABOR_SOCIAL": 5000,
-        "BLOCK_13_HUMAN_CAPITAL": 5000,
-        "BLOCK_14_ENERGY_AGRI": 5000,
-        "BLOCK_15_INFRA_ESG": 5000
+        "BLOCK_10_EXTERNAL": 7500,
+        "BLOCK_11_WORLD_ECONOMY": 7500,
+        "BLOCK_12_LABOR_SOCIAL": 7500,
+        "BLOCK_13_HUMAN_CAPITAL": 7500,
+        "BLOCK_14_ENERGY_AGRI": 7500,
+        "BLOCK_15_INFRA_ESG": 7500
       }
     },
     {
       "name": "series_ids_unique",
       "passed": true,
-      "details": 65123
+      "details": 94232
     },
     {
       "name": "mnemonics_unique",
       "passed": true,
-      "details": 65123
+      "details": 94232
     },
     {
       "name": "exact_mnemonic",
@@ -56,17 +56,17 @@
     {
       "name": "taxonomy4_complete",
       "passed": true,
-      "details": 65123
+      "details": 94232
     },
     {
       "name": "no_synthetic_observations",
       "passed": true,
-      "details": 65123
+      "details": 94232
     },
     {
       "name": "same_name_variants",
       "passed": true,
-      "details": 8133
+      "details": 10816
     }
   ]
 }
