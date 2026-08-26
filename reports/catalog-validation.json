@@ -1,0 +1,73 @@
+{
+  "generatedAt": "2026-08-26T07:30:11.210Z",
+  "status": "PASS",
+  "fixtureIndicators": 14355,
+  "checks": [
+    {
+      "name": "control_total_indicators",
+      "passed": true,
+      "details": 1606756
+    },
+    {
+      "name": "block_count",
+      "passed": true,
+      "details": 15
+    },
+    {
+      "name": "every_block_represented",
+      "passed": true,
+      "details": {
+        "BLOCK_01_DOMCLICK": 1000,
+        "BLOCK_02_RUSSIA_MACRO": 355,
+        "BLOCK_03_RUSSIA_REGIONS": 1000,
+        "BLOCK_04_PRICES": 1000,
+        "BLOCK_05_REAL_SECTOR": 1000,
+        "BLOCK_06_REAL_ESTATE": 1000,
+        "BLOCK_07_PUBLIC_FINANCE": 1000,
+        "BLOCK_08_BANKING": 1000,
+        "BLOCK_09_FIN_MARKETS": 1000,
+        "BLOCK_10_EXTERNAL": 1000,
+        "BLOCK_11_WORLD_ECONOMY": 1000,
+        "BLOCK_12_LABOR_SOCIAL": 1000,
+        "BLOCK_13_HUMAN_CAPITAL": 1000,
+        "BLOCK_14_ENERGY_AGRI": 1000,
+        "BLOCK_15_INFRA_ESG": 1000
+      }
+    },
+    {
+      "name": "series_ids_unique",
+      "passed": true,
+      "details": 14355
+    },
+    {
+      "name": "mnemonics_unique",
+      "passed": true,
+      "details": 14355
+    },
+    {
+      "name": "exact_mnemonic",
+      "passed": true,
+      "details": "OBJCPRM.RU75.RUB.TH.NA.M.DOM.A.AVG.NSA"
+    },
+    {
+      "name": "taxonomy4_complete",
+      "passed": true,
+      "details": 14355
+    },
+    {
+      "name": "taxonomy3_complete",
+      "passed": true,
+      "details": 14355
+    },
+    {
+      "name": "no_synthetic_observations",
+      "passed": true,
+      "details": 14355
+    },
+    {
+      "name": "same_name_variants",
+      "passed": true,
+      "details": 1571
+    }
+  ]
+}

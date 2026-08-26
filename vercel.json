@@ -1,5 +1,12 @@
 {
   "cleanUrls": false,
+  "functions": {
+    "api/catalog/[...route].mjs": {
+      "includeFiles": "catalog/demo/catalog-demo.json",
+      "memory": 1024,
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
     { "source": "/", "destination": "/datatracker-agent-v6.html" }
   ],

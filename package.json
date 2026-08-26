@@ -3,8 +3,14 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.2"
+  },
   "scripts": {
     "dev": "node tools/serve.mjs",
-    "preview": "node tools/serve.mjs"
+    "preview": "node tools/serve.mjs",
+    "test": "node --test tests/**/*.test.mjs",
+    "validate:catalog": "node scripts/catalog/validate.mjs",
+    "benchmark:catalog": "node scripts/catalog/benchmark.mjs"
   }
 }

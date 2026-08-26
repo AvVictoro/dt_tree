@@ -9269,14 +9269,10 @@
       .home-widget-types{grid-template-columns:repeat(2,minmax(0,1fr))}
     }
   </style>
-  <script src="./domclick-data.js"></script>
-  <script src="./bank-reports-data.js"></script>
-  <script src="./regional-economy-data.js"></script>
-  <script src="./macro-scenario-data.js"></script>
-  <script src="./banking-liquidity-data.js"></script>
   <script src="./indicator-catalog-data.js"></script>
   <script src="./external-indicator-data.js"></script>
   <script src="./vendor/echarts-5.4.3.min.js"></script>
+  <link rel="stylesheet" href="./catalog/styles.css">
 </head>
 
 <body>
@@ -9291,19 +9287,14 @@
         </div>
       </div>
 
-      <div class="nav-label">Рабочее место</div>
+      <div class="nav-label">Навигация</div>
       <div class="nav-item active" data-view="home"><span class="ic">⌂</span> Дом</div>
-      <div class="nav-item" data-view="chat"><span class="ic">✦</span> Ассистент</div>
-      <div class="nav-item" data-view="catalog"><span class="ic">⊞</span> Каталог <span class="badge ai"
-          style="background:var(--surface-2);color:var(--muted)">8709</span></div>
-      <div class="nav-item" data-view="workspaces"><span class="ic">▦</span> Рабочие области</div>
-<div class="nav-item" data-view="apps"><span class="ic">▥</span> Приложения</div>
-
-      <div class="nav-label">Избранные области</div>
-      <div id="pinned-workspaces-list" style="display:flex; flex-direction:column; gap:2px;"></div>
-
-      <div class="nav-label">Избранное</div>
-      <div id="fav-list"></div>
+      <div class="nav-item" data-view="catalog"><span class="ic">⊞</span> Каталог</div>
+      <div class="nav-item" data-view="catalog-1"><span class="ic">⌘</span> Каталог 1</div>
+      <div class="nav-item" data-view="catalog-2"><span class="ic">⎇</span> Каталог 2</div>
+      <div class="nav-item" data-view="catalog-3"><span class="ic">⌕</span> Каталог 3</div>
+      <div id="pinned-workspaces-list" hidden></div>
+      <div id="fav-list" hidden></div>
 
       <div class="side-foot">
         <div class="ask-hint" onclick="openPalette()" style="margin-bottom: 8px;">Найти индикатор или спросить —
@@ -9598,37 +9589,11 @@
         </section>
 
         <!-- ---------- VIEW: CATALOG EXPLORER ---------- -->
-        <section class="view" id="view-catalog">
-          <h1 class="h1">Каталог показателей</h1>
-          <p class="h1-sub" id="catalog-subtitle">Единый поиск по источникам, тематикам, названиям и мнемоникам</p>
-
-          <div class="cat-top">
-            <div class="cat-search">
-              <span class="sp">⌕</span>
-              <input id="cat-input" placeholder="Название, мнемоника или тема…" autocomplete="off" />
-              <span class="cnt" id="cat-cnt">— показателей</span>
-            </div>
-            <button class="btn ghost sm" onclick="openPalette()">Спросить агента ↗</button>
-          </div>
-
-          <div class="catalog-tabs" role="tablist" aria-label="Режим поиска каталога">
-            <button class="catalog-tab active" type="button" role="tab" aria-selected="true" data-catalog-mode="sources" onclick="switchCatalogMode('sources')">Базы данных</button>
-            <button class="catalog-tab" type="button" role="tab" aria-selected="false" data-catalog-mode="categories" onclick="switchCatalogMode('categories')">По категориям</button>
-            <button class="catalog-tab" type="button" role="tab" aria-selected="false" data-catalog-mode="facets" onclick="switchCatalogMode('facets')">Подбор показателей</button>
-          </div>
-
-          <div class="catalog-browser">
-            <aside class="catalog-sidebar" id="catalog-sidebar"></aside>
-            <div class="catalog-results" id="cat-tree"></div>
-          </div>
-
-          <div class="selbar" id="cat-selbar" style="display:none;">
-            <span>Выбрано: <b id="sel-n">0</b></span>
-            <span style="color:var(--muted);font-size:12.5px" id="sel-names">—</span>
-            <div style="margin-left:auto;display:flex;gap:8px" id="sel-actions">
-            </div>
-          </div>
-        </section>
+        <section class="view" id="view-catalog"><div class="catalog-experiment" id="catalog-mount-catalog"></div></section>
+        <section class="view" id="view-catalog-1"><div class="catalog-experiment" id="catalog-mount-catalog-1"></div></section>
+        <section class="view" id="view-catalog-2"><div class="catalog-experiment" id="catalog-mount-catalog-2"></div></section>
+        <section class="view" id="view-catalog-3"><div class="catalog-experiment" id="catalog-mount-catalog-3"></div></section>
+        <section class="view" id="view-catalog-indicator"><div class="catalog-experiment" id="catalog-mount-catalog-indicator"></div></section>
 
 
 
@@ -12479,6 +12444,10 @@
     const COP_CONTEXT = {
       home: { label: 'Дом · брифинг дня', sugg: ['Что важно для моих областей?', 'Развернуть по ОФЗ', 'Собрать дайджест на email'] },
       catalog: { label: 'Обозреватель каталога', sugg: ['Найди индикаторы про ликвидность', 'Похожие на ОФЗ 10 лет', 'Сделай область по ставкам'] },
+      'catalog-1': { label: 'Иерархический каталог', sugg: [] },
+      'catalog-2': { label: 'Конструктор выборки', sugg: [] },
+      'catalog-3': { label: 'Прямой поиск', sugg: [] },
+      'catalog-indicator': { label: 'Карточка индикатора', sugg: [] },
       indicator: { label: 'Индикатор', sugg: ['Построй ARIMA-прогноз', 'Корреляция с ликвидностью', 'Чем отличается от прогноза ФК?'] },
       workspace: { label: 'Рабочая область', sugg: ['Сравни динамику графиков', 'Собери выводы', 'Добавь прогноз ОФЗ на 6 мес'] },
       workspaces: { label: 'Каталог рабочих областей', sugg: ['Сделай новую область', 'Какая область сейчас активна?', 'Помоги с выбором'] },
@@ -12493,6 +12462,10 @@
     const CRUMB = {
   home: 'Дом',
   catalog: 'Каталог',
+  'catalog-1': 'Каталог 1',
+  'catalog-2': 'Каталог 2',
+  'catalog-3': 'Каталог 3',
+  'catalog-indicator': 'Каталог / Индикатор',
   indicator: 'Индикатор',
   workspace: 'Рабочие области',
   workspaces: 'Рабочие области',
@@ -14205,7 +14178,7 @@
       const appEl = document.querySelector('.app');
       appEl.classList.remove('mobile-sidebar-open', 'mobile-copilot-open');
       if (window.matchMedia('(max-width: 900px)').matches) applyShellPanelState(readShellPanelState());
-      if (view === 'chat') {
+      if (view === 'chat' || view === 'catalog' || view === 'catalog-1' || view === 'catalog-2' || view === 'catalog-3' || view === 'catalog-indicator') {
         appEl.classList.add('hide-copilot');
       } else {
         appEl.classList.remove('hide-copilot');
@@ -14218,7 +14191,7 @@
       }
 
       if (view === 'home') { renderHome(); }
-      if (view === 'catalog') { renderTree(document.getElementById('cat-input').value); updateSelbar(); }
+      if ((view === 'catalog' || view === 'catalog-1' || view === 'catalog-2' || view === 'catalog-3' || view === 'catalog-indicator') && window.catalogApp) { window.catalogApp.render(view); }
       if (view === 'indicator') { renderIndChart(); }
       if (view === 'workspace') {/* render ws detail is handled by openWorkspaceDetail */ }
       if (view === 'workspaces') { renderWorkspacesList(); }
@@ -14564,7 +14537,8 @@
       else if (e.key === 'ArrowUp') { e.preventDefault(); palMove(-1); }
       else if (e.key === 'Enter') { const it = palItems(); if (palSel >= 0 && it[palSel]) it[palSel].click(); else if (e.target.value.trim()) palAnswer('free', e.target.value.trim()); }
     });
-    document.getElementById('cat-input').addEventListener('input', e => renderTree(e.target.value));
+    const legacyCatalogInput = document.getElementById('cat-input');
+    if (legacyCatalogInput) legacyCatalogInput.addEventListener('input', e => renderTree(e.target.value));
 
     /* =================== INIT =================== */
     renderFavs(); renderPinnedWorkspacesSidebar(); renderHome(); goto('home'); setTimeout(() => toast('Подсказка: Ctrl + K — поиск индикаторов и команды агенту'), 1000);
@@ -16079,7 +16053,7 @@ function renderLiqDiag() {
       chart.setOption(option); chart.resize();
     }
   </script>
-  <script src="./analytics-apps.js"></script>
+  <script type="module" src="./catalog/main.mjs"></script>
 </body>
 
 </html>
