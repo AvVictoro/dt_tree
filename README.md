@@ -87,10 +87,15 @@ python3 scripts/catalog/import_full.py \
 - `GET /api/catalog/indicators`
 - `GET /api/catalog/search`
 - `GET /api/catalog/suggest`
+- `GET /api/catalog/indicator?id=:seriesId`
 - `GET /api/catalog/indicators/:seriesId`
 - `GET /api/catalog/groups`
+- `GET /api/catalog/group-series?groupId=:groupId`
+- `GET /api/catalog/group-facets?groupId=:groupId`
 - `GET /api/catalog/groups/:groupId/series`
 - `GET /api/catalog/groups/:groupId/facets`
+
+Одноуровневые маршруты `indicator`, `group-series` и `group-facets` используются клиентом в production, поскольку одинаково работают в локальном сервере и в файловой маршрутизации Vercel. Вложенные варианты сохранены для обратной совместимости.
 
 Пагинация cursor-based, размер страницы по умолчанию 50, максимум 100.
 

@@ -233,12 +233,15 @@ export async function handleCatalogRequest({ method = 'GET', pathname, searchPar
     return json(paginateGroups(groups, searchParams));
   }
 
+  const flatGroupKind = route === 'group-series' ? 'series' : route === 'group-facets' ? 'facets' : null;
   const groupRoute = route.match(/^groups\/(.+)\/(series|facets)$/);
-  if (groupRoute) {
-    const groupId = decodeURIComponent(groupRoute[1]);
+  if (groupRoute || flatGroupKind) {
+    const groupId = flatGroupKind ? searchParams.get('groupId') : decodeURIComponent(groupRoute[1]);
+    const groupKind = flatGroupKind || groupRoute[2];
+    if (!groupId) return json({ error: 'Group id is required' }, 400);
     const groupMembers = data.indicators.filter(indicator => getIndicatorGroupId(indicator) === groupId);
     if (!groupMembers.length) return json({ error: 'Indicator group not found' }, 404);
-    if (groupRoute[2] === 'facets') return json({ facets: attributeFacets(groupMembers, searchParams) });
+    if (groupKind === 'facets') return json({ facets: attributeFacets(groupMembers, searchParams) });
     const filtered = applyGroupFilters(groupMembers, searchParams);
     const query = searchParams.get('q') || '';
     const ranked = query ? rankIndicators(filtered, query) : filtered.map(indicator => ({ indicator, score: 1 }));
@@ -246,8 +249,9 @@ export async function handleCatalogRequest({ method = 'GET', pathname, searchPar
   }
 
   const idMatch = route.match(/^indicators\/(.+)$/);
-  if (idMatch) {
-    const key = decodeURIComponent(idMatch[1]);
+  if (idMatch || route === 'indicator') {
+    const key = route === 'indicator' ? searchParams.get('id') : decodeURIComponent(idMatch[1]);
+    if (!key) return json({ error: 'Indicator id is required' }, 400);
     const indicator = data.indicators.find(item => item.seriesId === key || item.mnemonic === key);
     return indicator ? json(compact(indicator)) : json({ error: 'Indicator not found' }, 404);
   }

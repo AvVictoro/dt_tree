@@ -115,3 +115,16 @@ test('catalog 6 groups before pagination and expands group series', async () => 
   const facets = await get(`/api/catalog/groups/${encodeURIComponent(group.groupId)}/facets`);
   assert.ok(Array.isArray(facets.payload.facets.frequency));
 });
+
+test('flat production-safe routes expose group rows and indicator detail', async () => {
+  const groups = await get('/api/catalog/groups?q=CPIAFD&limit=1');
+  const group = groups.payload.items[0];
+  const series = await get(`/api/catalog/group-series?groupId=${encodeURIComponent(group.groupId)}&limit=2`);
+  assert.equal(series.status, 200);
+  assert.equal(series.payload.items.length, 2);
+  const facets = await get(`/api/catalog/group-facets?groupId=${encodeURIComponent(group.groupId)}`);
+  assert.equal(facets.status, 200);
+  const detail = await get(`/api/catalog/indicator?id=${encodeURIComponent(series.payload.items[0].seriesId)}`);
+  assert.equal(detail.status, 200);
+  assert.equal(detail.payload.seriesId, series.payload.items[0].seriesId);
+});

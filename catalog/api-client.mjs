@@ -18,8 +18,12 @@ async function request(route, params = {}, options = {}) {
     headers: { accept: 'application/json', ...(options.headers || {}) },
     ...options,
   }).then(async response => {
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || `Ошибка API ${response.status}`);
+    const contentType = response.headers.get('content-type') || '';
+    const payload = contentType.includes('application/json') ? await response.json() : { error: await response.text() };
+    if (!response.ok) {
+      const detail = typeof payload.error === 'string' ? payload.error : payload.error?.message;
+      throw new Error(detail || `Ошибка API ${response.status}`);
+    }
     return payload;
   });
   if (!options.signal && (options.method || 'GET') === 'GET') cache.set(cacheKey, promise);
@@ -34,8 +38,8 @@ export const catalogApi = {
   indicators: params => request('indicators', params),
   search: params => request('search', params),
   suggest: (q, signal) => request('suggest', { q }, { signal }),
-  indicator: id => request(`indicators/${encodeURIComponent(id)}`),
+  indicator: id => request('indicator', { id }),
   groups: params => request('groups', params),
-  groupSeries: (groupId, params) => request(`groups/${encodeURIComponent(groupId)}/series`, params),
-  groupFacets: (groupId, params) => request(`groups/${encodeURIComponent(groupId)}/facets`, params),
+  groupSeries: (groupId, params) => request('group-series', { groupId, ...params }),
+  groupFacets: (groupId, params) => request('group-facets', { groupId, ...params }),
 };

@@ -150,10 +150,13 @@ export async function handleDatabaseCatalogRequest({ method = 'GET', pathname, s
       taxonomy: { topic: { alias: row.topic_alias, name: row.topic_name }, theme: { alias: row.theme_alias, name: row.theme_name }, subtheme: { alias: row.subtheme_alias, name: row.subtheme_name }, pathId: row.path_id, path: row.path_name },
     })), total, limit, nextCursor: offset + limit < total ? encodeCursor(offset + limit) : null });
   }
+  const flatGroupKind = route === 'group-series' ? 'series' : route === 'group-facets' ? 'facets' : null;
   const groupRoute = route.match(/^groups\/(.+)\/(series|facets)$/);
-  if (groupRoute) {
-    const groupId = decodeURIComponent(groupRoute[1]);
-    if (groupRoute[2] === 'facets') {
+  if (groupRoute || flatGroupKind) {
+    const groupId = flatGroupKind ? searchParams.get('groupId') : decodeURIComponent(groupRoute[1]);
+    const groupKind = flatGroupKind || groupRoute[2];
+    if (!groupId) return json({ error: 'Group id is required' }, 400);
+    if (groupKind === 'facets') {
       const facets = {};
       for (const [key, column] of Object.entries(SIMPLE_COLUMNS)) {
         const f = filters(searchParams, { omit: key });
@@ -174,8 +177,9 @@ export async function handleDatabaseCatalogRequest({ method = 'GET', pathname, s
     return json({ items: rows.map(mapIndicator), total, limit, nextCursor: offset + limit < total ? encodeCursor(offset + limit) : null });
   }
   const idMatch = route.match(/^indicators\/(.+)$/);
-  if (idMatch) {
-    const key = decodeURIComponent(idMatch[1]);
+  if (idMatch || route === 'indicator') {
+    const key = route === 'indicator' ? searchParams.get('id') : decodeURIComponent(idMatch[1]);
+    if (!key) return json({ error: 'Indicator id is required' }, 400);
     const { rows } = await db.query(`${CARD_SELECT} WHERE i.dataset_version_id=(SELECT id FROM catalog_dataset_version WHERE status='active') AND (i.series_id::text=$1 OR i.mnemonic=$1) LIMIT 1`, [key]);
     return rows[0] ? json(mapIndicator(rows[0])) : json({ error: 'Indicator not found' }, 404);
   }
