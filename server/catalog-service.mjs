@@ -2,7 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
-import { decodeCursor, encodeCursor, rankIndicators, searchableText } from '../catalog/lib/search.mjs';
+import { decodeCursor, encodeCursor, rankIndicators, searchableText, searchScore } from '../catalog/lib/search.mjs';
+import { getIndicatorGroupId, groupSeries } from '../catalog/lib/grouping.mjs';
 import { displayBlockName } from './label-overrides.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -10,7 +11,11 @@ let fixturePromise;
 
 async function loadFixture() {
   fixturePromise ||= fs.readFile(path.join(root, 'catalog/data/catalog-data.json.gz')).then(buffer => JSON.parse(gunzipSync(buffer).toString('utf8'))).then(data => {
-    data.indicators.forEach(indicator => { indicator._searchText = searchableText(indicator); });
+    data.indicators.forEach(indicator => {
+      indicator.taxonomy3 = data.taxonomy3Paths?.[indicator.taxonomy3PathId] || null;
+      indicator._searchText = searchableText(indicator);
+    });
+    data.mnemonicIndex = new Map(data.indicators.map(indicator => [String(indicator.mnemonic || '').toLocaleLowerCase('ru-RU'), indicator]));
     data.blocks = data.blocks.map(block => {
       const sourceName = block.sourceName || block.name;
       return { ...block, sourceName, name: displayBlockName(block.alias, sourceName) };
@@ -39,6 +44,22 @@ const DIMENSIONS = {
   geography: indicator => [indicator.geography?.code],
 };
 
+const GROUP_DIMENSIONS = {
+  ...DIMENSIONS,
+  topic: indicator => [indicator.taxonomy3?.topic?.alias],
+  theme: indicator => [indicator.taxonomy3?.theme?.alias],
+  subtheme: indicator => [indicator.taxonomy3?.subtheme?.alias],
+  subtheme2: () => [],
+};
+
+const SERIES_DIMENSIONS = {
+  source: DIMENSIONS.source,
+  frequency: DIMENSIONS.frequency,
+  unit: DIMENSIONS.unit,
+  geographyScope: DIMENSIONS.geographyScope,
+  geography: DIMENSIONS.geography,
+};
+
 const FACET_LABELS = {
   block: (indicator, value) => (indicator.blocks?.all || []).find(item => item.alias === value)?.name || value,
   topic: indicator => indicator.taxonomy4?.topic?.name,
@@ -50,6 +71,13 @@ const FACET_LABELS = {
   unit: indicator => indicator.unit?.label,
   geographyScope: indicator => indicator.geography?.scope,
   geography: indicator => indicator.geography?.name,
+};
+
+const GROUP_FACET_LABELS = {
+  ...FACET_LABELS,
+  topic: indicator => indicator.taxonomy3?.topic?.name,
+  theme: indicator => indicator.taxonomy3?.theme?.name,
+  subtheme: indicator => indicator.taxonomy3?.subtheme?.name,
 };
 
 function values(params, key) {
@@ -67,6 +95,31 @@ function applyFilters(indicators, params, omit = '') {
   }));
 }
 
+function applyGroupFilters(indicators, params, omit = '') {
+  return indicators.filter(indicator => Object.entries(GROUP_DIMENSIONS).every(([key, getter]) => {
+    if (key === omit) return true;
+    const selected = values(params, key);
+    if (!selected.length) return true;
+    return selected.some(value => getter(indicator).filter(Boolean).includes(value));
+  }));
+}
+
+function attributeFacets(indicators, params) {
+  const facets = {};
+  for (const [key, getter] of Object.entries(SERIES_DIMENSIONS)) {
+    const counts = new Map();
+    for (const indicator of applyGroupFilters(indicators, params, key)) {
+      for (const value of getter(indicator).filter(Boolean)) {
+        const current = counts.get(value) || { value, label: FACET_LABELS[key]?.(indicator, value) || value, count: 0 };
+        current.count += 1;
+        counts.set(value, current);
+      }
+    }
+    facets[key] = [...counts.values()].sort((a, b) => b.count - a.count || String(a.label).localeCompare(String(b.label), 'ru'));
+  }
+  return facets;
+}
+
 function compact(indicator) {
   const { _searchText, ...clean } = indicator;
   return clean;
@@ -82,6 +135,16 @@ function paginate(items, params) {
     limit,
     nextCursor: offset + limit < items.length ? encodeCursor(offset + limit) : null,
   };
+}
+
+function paginateGroups(items, params) {
+  const limit = Math.min(100, Math.max(1, Number(params.get('limit') || 30)));
+  const offset = decodeCursor(params.get('cursor'));
+  const page = items.slice(offset, offset + limit).map(group => {
+    const { series, _score, ...summary } = group;
+    return summary;
+  });
+  return { items: page, total: items.length, limit, nextCursor: offset + limit < items.length ? encodeCursor(offset + limit) : null };
 }
 
 function hierarchyLevel(indicator, level, taxonomyMode) {
@@ -109,7 +172,7 @@ export async function handleCatalogRequest({ method = 'GET', pathname, searchPar
     dataVersion: data.manifest?.datasetVersion || 'taxonomy-final-2026-08-25',
     fullDataReady: false,
     taxonomyMode: 'four-level',
-    threeLevelAvailable: false,
+    threeLevelAvailable: true,
     totals: data.manifest?.totals || {},
   });
   if (route === 'blocks') return json({ items: data.blocks });
@@ -117,7 +180,7 @@ export async function handleCatalogRequest({ method = 'GET', pathname, searchPar
   if (route === 'hierarchy') {
     const level = searchParams.get('level') || 'topic';
     const taxonomyMode = searchParams.get('taxonomy') === '3' ? '3' : '4';
-    const filtered = applyFilters(data.indicators, searchParams);
+    const filtered = taxonomyMode === '3' ? applyGroupFilters(data.indicators, searchParams) : applyFilters(data.indicators, searchParams);
     const counts = new Map();
     for (const indicator of filtered) {
       const node = hierarchyLevel(indicator, level, taxonomyMode);
@@ -135,12 +198,15 @@ export async function handleCatalogRequest({ method = 'GET', pathname, searchPar
   }
 
   if (route === 'facets') {
+    const groupedTaxonomy = searchParams.get('taxonomy') === '3';
+    const dimensions = groupedTaxonomy ? GROUP_DIMENSIONS : DIMENSIONS;
+    const labels = groupedTaxonomy ? GROUP_FACET_LABELS : FACET_LABELS;
     const facets = {};
-    for (const [key, getter] of Object.entries(DIMENSIONS)) {
+    for (const [key, getter] of Object.entries(dimensions)) {
       const count = new Map();
-      for (const indicator of applyFilters(data.indicators, searchParams, key)) {
+      for (const indicator of (groupedTaxonomy ? applyGroupFilters(data.indicators, searchParams, key) : applyFilters(data.indicators, searchParams, key))) {
         for (const value of getter(indicator).filter(Boolean)) {
-          const current = count.get(value) || { value, label: FACET_LABELS[key]?.(indicator, value) || value, count: 0 };
+          const current = count.get(value) || { value, label: labels[key]?.(indicator, value) || value, count: 0 };
           current.count += 1;
           count.set(value, current);
         }
@@ -148,10 +214,35 @@ export async function handleCatalogRequest({ method = 'GET', pathname, searchPar
       facets[key] = [...count.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value, 'ru'));
     }
     return json({
-      taxonomy: { topics: facets.topic, themes: facets.theme, subthemes: facets.subtheme, subthemes2: facets.subtheme2 },
-      attributes: { frequencies: facets.frequency, geographies: facets.geography, units: facets.unit, sources: facets.source },
+      taxonomy: { topics: facets.topic, themes: facets.theme, subthemes: facets.subtheme, subthemes2: facets.subtheme2 || [] },
+      attributes: { frequencies: facets.frequency, geographies: facets.geography, geographyScopes: facets.geographyScope, units: facets.unit, sources: facets.source },
       facets,
     });
+  }
+
+  if (route === 'groups') {
+    const filtered = applyGroupFilters(data.indicators, searchParams);
+    const query = searchParams.get('q') || '';
+    const exactSeries = data.mnemonicIndex.get(query.toLocaleLowerCase('ru-RU'));
+    const exactGroupId = exactSeries ? getIndicatorGroupId(exactSeries) : null;
+    let groups = groupSeries(filtered).map(group => ({
+      ...group,
+      _score: exactGroupId ? Number(group.groupId === exactGroupId) : query ? group.series.reduce((score, series) => Math.max(score, searchScore(series, query)), 0) : 1,
+    })).filter(group => group._score > 0);
+    groups.sort((a, b) => b._score - a._score || (a.taxonomy?.path || '').localeCompare(b.taxonomy?.path || '', 'ru') || a.name.localeCompare(b.name, 'ru'));
+    return json(paginateGroups(groups, searchParams));
+  }
+
+  const groupRoute = route.match(/^groups\/(.+)\/(series|facets)$/);
+  if (groupRoute) {
+    const groupId = decodeURIComponent(groupRoute[1]);
+    const groupMembers = data.indicators.filter(indicator => getIndicatorGroupId(indicator) === groupId);
+    if (!groupMembers.length) return json({ error: 'Indicator group not found' }, 404);
+    if (groupRoute[2] === 'facets') return json({ facets: attributeFacets(groupMembers, searchParams) });
+    const filtered = applyGroupFilters(groupMembers, searchParams);
+    const query = searchParams.get('q') || '';
+    const ranked = query ? rankIndicators(filtered, query) : filtered.map(indicator => ({ indicator, score: 1 }));
+    return json({ ...paginate(ranked, searchParams), facets: attributeFacets(groupMembers, searchParams) });
   }
 
   const idMatch = route.match(/^indicators\/(.+)$/);
@@ -182,7 +273,8 @@ export async function handleCatalogRequest({ method = 'GET', pathname, searchPar
       }
     }
     const query = searchParams.get('q') || '';
-    const filtered = applyFilters(data.indicators, searchParams);
+    const exactSeries = query ? data.mnemonicIndex.get(query.toLocaleLowerCase('ru-RU')) : null;
+    const filtered = applyFilters(exactSeries ? [exactSeries] : data.indicators, searchParams);
     const refinementKeys = ['q', 'topic', 'theme', 'subtheme', 'subtheme2', 'source', 'frequency', 'unit', 'geographyScope', 'geography'];
     const noIntent = values(searchParams, 'block').length === 0 && !refinementKeys.some(key => values(searchParams, key).length > 0);
     const blockOnly = values(searchParams, 'block').length > 0 && !refinementKeys.some(key => values(searchParams, key).length > 0);

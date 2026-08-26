@@ -84,7 +84,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--taxonomy", required=True, type=pathlib.Path)
     parser.add_argument("--blocks", required=True, type=pathlib.Path)
-    parser.add_argument("--taxonomy3", type=pathlib.Path)
+    parser.add_argument("--taxonomy3", required=True, type=pathlib.Path)
     parser.add_argument("--output", required=True, type=pathlib.Path)
     parser.add_argument("--per-block", type=int, default=7500)
     return parser.parse_args()
@@ -137,14 +137,31 @@ def main():
             if len(taxonomy_rows) == len(selected_ids):
                 break
 
+    taxonomy3_rows = {}
+    for row in iter_csv_members(args.taxonomy3, "indicator_taxonomy_assignment_3_levels_part_"):
+        if row["id"] in selected_ids:
+            taxonomy3_rows[row["id"]] = row
+            if len(taxonomy3_rows) == len(selected_ids):
+                break
+
     indicators = []
+    taxonomy3_paths = {}
     for series_id in sorted(selected_ids):
         row = taxonomy_rows.get(series_id)
+        row3 = taxonomy3_rows.get(series_id)
         block_row = selected_blocks[series_id]
-        if not row:
+        if not row or not row3:
             continue
         all_aliases = split_pipe(block_row.get("all_block_aliases", ""))
         all_names = split_pipe(block_row.get("all_blocks", ""))
+        taxonomy3_path_id = row3.get("thematic_path_id", "") or row3.get("thematic_path_alias", "")
+        taxonomy3_paths.setdefault(taxonomy3_path_id, {
+            "topic": compact_node(row3, "topic"),
+            "theme": compact_node(row3, "theme"),
+            "subtheme": compact_node(row3, "subtheme"),
+            "pathId": taxonomy3_path_id,
+            "path": row3.get("thematic_path", ""),
+        })
         indicator = {
             "seriesId": series_id,
             "mnemonic": row.get("mnemonics", ""),
@@ -172,6 +189,7 @@ def main():
                 },
                 "path": row.get("thematic_path", ""),
             },
+            "taxonomy3PathId": taxonomy3_path_id,
             "blocks": {
                 "primary": {
                     "alias": block_row.get("primary_block_alias", ""),
@@ -196,7 +214,7 @@ def main():
             "mode": "file",
             "datasetVersion": "taxonomy-final-2026-08-25",
             "taxonomyMode": "four-level",
-            "threeLevelAvailable": False,
+            "threeLevelAvailable": True,
             "controlIndicators": TOTALS["indicators"],
             "queryableIndicators": len(indicators),
             "fullDataReady": False,
@@ -204,6 +222,7 @@ def main():
             "exactMnemonic": EXACT_MNEMONIC,
         },
         "blocks": blocks,
+        "taxonomy3Paths": taxonomy3_paths,
         "indicators": indicators,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

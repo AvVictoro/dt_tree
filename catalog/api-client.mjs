@@ -35,4 +35,7 @@ export const catalogApi = {
   search: params => request('search', params),
   suggest: (q, signal) => request('suggest', { q }, { signal }),
   indicator: id => request(`indicators/${encodeURIComponent(id)}`),
+  groups: params => request('groups', params),
+  groupSeries: (groupId, params) => request(`groups/${encodeURIComponent(groupId)}/series`, params),
+  groupFacets: (groupId, params) => request(`groups/${encodeURIComponent(groupId)}/facets`, params),
 };

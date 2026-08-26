@@ -15,6 +15,10 @@ check('series_ids_unique', new Set(fixture.indicators.map(item => item.seriesId)
 check('mnemonics_unique', new Set(fixture.indicators.map(item => item.mnemonic)).size === fixture.indicators.length, fixture.indicators.length);
 check('exact_mnemonic', fixture.indicators.some(item => item.mnemonic === exactMnemonic), exactMnemonic);
 check('taxonomy4_complete', fixture.indicators.every(item => item.taxonomy4?.topic?.alias && item.taxonomy4?.theme?.alias && item.taxonomy4?.subtheme?.alias && item.taxonomy4?.subtheme2?.alias), fixture.indicators.length);
+check('taxonomy3_complete', fixture.indicators.every(item => {
+  const path = fixture.taxonomy3Paths?.[item.taxonomy3PathId];
+  return path?.topic?.alias && path?.theme?.alias && path?.subtheme?.alias;
+}), Object.keys(fixture.taxonomy3Paths || {}).length);
 check('no_synthetic_observations', fixture.indicators.every(item => item.availability?.hasTimeSeries === false && item.availability?.observationCount === 0), fixture.indicators.length);
 const nameVariants = new Map();
 for (const item of fixture.indicators) {

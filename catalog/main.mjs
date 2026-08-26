@@ -1,4 +1,6 @@
 import { catalogApi } from './api-client.mjs';
+import { CATALOG7_COLORS, CATALOG7_DATES, CATALOG7_SERIES } from './data/catalog7-timeseries.mjs';
+import { addSelection, removeSelection, selectedItems, toggleInclude } from './lib/selection.mjs';
 import { CATALOG_VIEWS, paramsToState, readRoute, writeRoute } from './state.mjs';
 
 const VIEW_TITLES = {
@@ -6,16 +8,27 @@ const VIEW_TITLES = {
   'catalog-2': ['Каталог 2', 'Конструктор выборки по тематике и атрибутам индикаторов'],
   'catalog-3': ['Каталог 3', 'Прямой поиск по названию, мнемонике и метаданным'],
   'catalog-4': ['Каталог 4', 'Последовательная навигация с быстрым переходом к поиску по выбранному разделу'],
+  'catalog-5': ['Каталог 5', 'Быстрая выборка внутри одного блока данных с единым набором фильтров'],
+  'catalog-6': ['Каталог 6', 'Трёхуровневая навигация по агрегированным группам показателей'],
+  'catalog-7': ['Каталог 7', 'Выбор индикаторов и рабочая область для сопоставления данных'],
 };
 const LEVELS = ['topic', 'theme', 'subtheme', 'subtheme2'];
+const GROUP_LEVELS = ['topic', 'theme', 'subtheme'];
 const LEVEL_LABELS = { topic: 'Топики', theme: 'Темы', subtheme: 'Сабтемы', subtheme2: 'Сабтемы 2' };
+const CATALOG5_TAXONOMY_LABELS = { topic: 'Тема', theme: 'Тематика', subtheme: 'Подтема', subtheme2: 'Конечная категория' };
 const FACET_LABELS = {
   topic: 'Топики', theme: 'Темы', subtheme: 'Сабтемы', subtheme2: 'Сабтемы 2',
-  source: 'Источники', frequency: 'Частоты', unit: 'Единицы измерения', geography: 'Географии',
+  source: 'Источники', frequency: 'Частоты', unit: 'Единицы измерения', geographyScope: 'Типы географии', geography: 'Географии',
 };
+const ATTRIBUTE_DIMENSIONS = ['geographyScope', 'geography', 'frequency', 'unit', 'source'];
 const appState = new Map();
 const nodeCache = new Map();
 const expandedFacets = new Set();
+const catalog6Expanded = new Set();
+const catalog6Panels = new Map();
+const catalog7Selection = new Map();
+const CATALOG7_LAYOUT_KEY = 'dt.catalog7.layout.v1';
+const DEFAULT_CATALOG7_LAYOUT = { showTaxonomy: true, showAttributes: true, showResults: true, showAnalysis: false, analysisWidth: 430, tab: 'list' };
 let manifest;
 let blocks = [];
 let suggestionController;
@@ -41,15 +54,17 @@ function blockRows() {
   return `<section class="catalog1-level" data-active-level="block"><div class="catalog1-level-head"><span>Блоки данных</span><small>${fmt(blocks.length)}</small></div><div class="catalog1-list">${blocks.map(block => `<button class="catalog1-row" data-block="${esc(block.alias)}"><span class="catalog1-chevron">›</span><span><b>${esc(block.name)}</b><small>${esc(block.description)}</small></span><em>${fmt(block.availableSeries ?? block.totalSeries)}</em></button>`).join('')}</div></section>`;
 }
 
-function card(indicator, fromView, fromState) {
-  return `<article class="catalog-card" tabindex="0" data-series-id="${esc(indicator.seriesId)}" data-from-view="${esc(fromView)}" data-return-state="${esc(JSON.stringify(fromState))}"><div><h3>${esc(indicator.name)}</h3><div class="catalog-card-code">${esc(indicator.mnemonic)}</div><div class="catalog-card-meta"><span>${esc(indicator.geography?.name || indicator.geography?.code)}</span><span>${esc(indicator.frequency?.label)}</span><span>${esc(indicator.unit?.code)}</span><span>${esc(indicator.source?.label)}</span></div></div><span class="catalog-card-arrow">→</span></article>`;
+function card(indicator, fromView, fromState, { selectable = false } = {}) {
+  const selected = catalog7Selection.has(String(indicator.seriesId));
+  const selector = selectable ? `<label class="catalog-card-selector" title="Добавить в рабочую область"><input type="checkbox" data-select-series="${esc(indicator.seriesId)}" ${selected ? 'checked' : ''}><span></span></label>` : '';
+  return `<article class="catalog-card ${selectable ? 'selectable' : ''}" tabindex="0" data-series-id="${esc(indicator.seriesId)}" data-from-view="${esc(fromView)}" data-return-state="${esc(JSON.stringify(fromState))}">${selector}<div><h3>${esc(indicator.name)}</h3><div class="catalog-card-code">${esc(indicator.mnemonic)}</div><div class="catalog-card-meta"><span>${esc(indicator.geography?.name || indicator.geography?.code)}</span><span>${esc(indicator.frequency?.label)}</span><span>${esc(indicator.unit?.code)}</span><span>${esc(indicator.source?.label)}</span></div></div><span class="catalog-card-arrow">→</span></article>`;
 }
 
 function hasRefinement(state) {
-  return Boolean(state.q || LEVELS.some(level => asList(state[level]).length) || ['source', 'frequency', 'unit', 'geography'].some(key => asList(state[key]).length));
+  return Boolean(state.q || LEVELS.some(level => asList(state[level]).length) || ATTRIBUTE_DIMENSIONS.some(key => asList(state[key]).length));
 }
 
-function cards(response, view, state) {
+function cards(response, view, state, options = {}) {
   if (response.requiresRefinement) {
     const message = state.block && !hasRefinement({ ...state, block: null })
       ? 'Блок выбран. Уточните выбор тематикой, атрибутом или поисковым запросом.'
@@ -57,11 +72,11 @@ function cards(response, view, state) {
     return `<div class="catalog-empty"><div><b>Нужны условия выборки</b>${message}</div></div>`;
   }
   if (!response.items?.length) return '<div class="catalog-empty"><div><b>Ничего не найдено</b>Измените запрос или снимите часть фильтров.</div></div>';
-  return `<div class="catalog-result-head"><span>Найдено: ${fmt(response.total)}</span><span>по ${response.limit} на странице</span></div><div class="catalog-result-list">${response.items.map(item => card(item, view, state)).join('')}</div>${response.nextCursor ? `<button class="catalog-loadmore" data-next-cursor="${response.nextCursor}">Следующая страница</button>` : ''}`;
+  return `<div class="catalog-result-head"><span>Найдено: ${fmt(response.total)}</span><span>по ${response.limit} на странице</span></div><div class="catalog-result-list">${response.items.map(item => card(item, view, state, options)).join('')}</div>${response.nextCursor ? `<button class="catalog-loadmore" data-next-cursor="${response.nextCursor}">Следующая страница</button>` : ''}`;
 }
 
 function apiParams(state) {
-  const allowed = ['q', 'block', ...LEVELS, 'source', 'frequency', 'unit', 'geography', 'cursor', 'limit'];
+  const allowed = ['q', 'block', ...LEVELS, ...ATTRIBUTE_DIMENSIONS, 'cursor', 'limit'];
   return Object.fromEntries(allowed.filter(key => state[key]).map(key => [key, state[key]]));
 }
 
@@ -89,7 +104,7 @@ function navigate(view, state = {}) {
 function bindResults(root, view) {
   root.querySelectorAll('.catalog-card').forEach(element => {
     const open = () => navigate('catalog-indicator', { id: element.dataset.seriesId, from: element.dataset.fromView, returnState: element.dataset.returnState });
-    element.addEventListener('click', open);
+    element.addEventListener('click', event => { if (!event.target.closest('[data-select-series]')) open(); });
     element.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') open(); });
   });
   root.querySelector('.catalog-loadmore')?.addEventListener('click', event => setState(view, { cursor: event.currentTarget.dataset.nextCursor }));
@@ -207,18 +222,29 @@ function selectedWithFallback(items, selected) {
   return result;
 }
 
-function facetGroup(view, dimension, items, state, { searchable = false } = {}) {
+function facetGroup(view, dimension, items, state, { searchable = false, label = FACET_LABELS[dimension] } = {}) {
   const key = `${view}:${dimension}`;
   const expanded = expandedFacets.has(key);
   const values = selectedWithFallback(items, state[dimension]);
-  return `<div class="catalog-filter-group" data-facet-group="${dimension}"><h4><span>${FACET_LABELS[dimension]}</span>${asList(state[dimension]).length ? `<button data-clear-facet="${dimension}">сбросить</button>` : ''}</h4>${searchable ? `<input class="catalog-facet-search" data-facet-search="${dimension}" placeholder="Поиск по ${FACET_LABELS[dimension].toLowerCase()}">` : ''}<div class="catalog-facet-values ${expanded ? 'expanded' : ''}">${values.map((item, index) => `<label class="catalog-check ${!expanded && index >= 10 ? 'catalog-check-more' : ''}" data-facet-label="${esc(String(item.label || item.value).toLowerCase())}"><input type="checkbox" data-facet="${dimension}" value="${esc(item.value)}" ${asList(state[dimension]).includes(item.value) ? 'checked' : ''}><span>${esc(item.label || item.value)}</span><em>${fmt(item.count)}</em></label>`).join('') || '<span class="catalog-card-code">Нет вариантов</span>'}</div>${values.length > 10 ? `<button class="catalog-show-all" data-show-all="${dimension}">${expanded ? 'Свернуть' : `Показать все · ${fmt(values.length)}`}</button>` : ''}</div>`;
+  return `<div class="catalog-filter-group" data-facet-group="${dimension}"><h4><span>${esc(label)}</span>${asList(state[dimension]).length ? `<button data-clear-facet="${dimension}">сбросить</button>` : ''}</h4>${searchable ? `<input class="catalog-facet-search" data-facet-search="${dimension}" placeholder="Поиск по ${esc(label.toLowerCase())}">` : ''}<div class="catalog-facet-values ${expanded ? 'expanded' : ''}">${values.map((item, index) => `<label class="catalog-check ${!expanded && index >= 10 ? 'catalog-check-more' : ''}" data-facet-label="${esc(String(item.label || item.value).toLowerCase())}"><input type="checkbox" data-facet="${dimension}" value="${esc(item.value)}" ${asList(state[dimension]).includes(item.value) ? 'checked' : ''}><span>${esc(item.label || item.value)}</span><em>${fmt(item.count)}</em></label>`).join('') || '<span class="catalog-card-code">Нет вариантов</span>'}</div>${values.length > 10 ? `<button class="catalog-show-all" data-show-all="${dimension}">${expanded ? 'Свернуть' : `Показать все · ${fmt(values.length)}`}</button>` : ''}</div>`;
 }
 
-function bindFacetPanels(root, view) {
+function facetGroups(view, dimensions, facets, state, labels = {}) {
+  return dimensions.map(dimension => facetGroup(view, dimension, facets[dimension], state, {
+    searchable: ['topic', 'theme', 'subtheme', 'subtheme2', 'geography', 'unit', 'source'].includes(dimension),
+    label: labels[dimension] || FACET_LABELS[dimension],
+  })).join('');
+}
+
+function bindFacetPanels(root, view, { dependentTaxonomy = false, renderAfter = true } = {}) {
   root.querySelectorAll('[data-facet]').forEach(input => input.addEventListener('change', () => {
     const dimension = input.dataset.facet;
     const selected = [...root.querySelectorAll(`[data-facet="${dimension}"]:checked`)].map(item => item.value);
-    setState(view, { [dimension]: selected, cursor: null });
+    const patch = { [dimension]: selected, cursor: null };
+    if (dependentTaxonomy && LEVELS.includes(dimension)) {
+      LEVELS.slice(LEVELS.indexOf(dimension) + 1).forEach(key => { patch[key] = null; });
+    }
+    if (renderAfter) setState(view, patch);
   }));
   root.querySelectorAll('[data-clear-facet]').forEach(button => button.addEventListener('click', () => setState(view, { [button.dataset.clearFacet]: null, cursor: null })));
   root.querySelectorAll('[data-show-all]').forEach(button => button.addEventListener('click', () => {
@@ -249,9 +275,9 @@ async function renderCatalog2(view = 'catalog-2', { embedded = false, allowBlock
   ]);
   const facets = facetResponse.facets || {};
   const attributeRoot = root.querySelector('#catalog-attribute-filter');
-  attributeRoot.innerHTML = `<div class="catalog-panel-title">Атрибуты</div>${facetGroup(view, 'geography', facets.geography, state, { searchable: true })}${facetGroup(view, 'frequency', facets.frequency, state)}${facetGroup(view, 'unit', facets.unit, state, { searchable: true })}${facetGroup(view, 'source', facets.source, state, { searchable: true })}`;
+  attributeRoot.innerHTML = `<div class="catalog-panel-title">Атрибуты</div>${facetGroups(view, ATTRIBUTE_DIMENSIONS, facets, state)}`;
   const taxonomyRoot = root.querySelector('#catalog-taxonomy-filter');
-  taxonomyRoot.innerHTML = `<div class="catalog-panel-title">Таксономия</div>${facetGroup(view, 'topic', facets.topic, state, { searchable: true })}${facetGroup(view, 'theme', facets.theme, state, { searchable: true })}${facetGroup(view, 'subtheme', facets.subtheme, state, { searchable: true })}${facetGroup(view, 'subtheme2', facets.subtheme2, state, { searchable: true })}`;
+  taxonomyRoot.innerHTML = `<div class="catalog-panel-title">Таксономия</div>${facetGroups(view, LEVELS, facets, state)}`;
   bindFacetPanels(root, view);
   const resultRoot = root.querySelector('#catalog-filter-results');
   resultRoot.innerHTML = cards(resultResponse, view, state);
@@ -299,6 +325,306 @@ async function renderCatalog3() {
   setTimeout(() => input.focus(), 0);
 }
 
+function clearFilterPatch() {
+  return Object.fromEntries([...LEVELS, ...ATTRIBUTE_DIMENSIONS, 'cursor'].map(key => [key, null]));
+}
+
+function compactBlockList(view, state) {
+  return `<aside class="catalog-panel sticky catalog5-blocks"><div class="catalog-panel-title">Блоки данных</div><div class="catalog5-block-list">${blocks.map(block => `<button data-c5-block="${esc(block.alias)}" class="${state.block === block.alias ? 'active' : ''}"><span>${esc(block.name)}</span><em>${fmt(block.totalSeries ?? block.availableSeries)}</em></button>`).join('')}</div></aside>`;
+}
+
+async function renderCatalog5() {
+  const view = 'catalog-5';
+  const root = mount(view);
+  const state = currentState(view);
+  const filterMode = state.filterMode === 'attributes' ? 'attributes' : 'taxonomy';
+  root.innerHTML = `${header(view)}${searchBox(state.q, 'Поиск внутри выбранного блока…', 'catalog5-query')}<div class="catalog5-layout">${compactBlockList(view, state)}<main id="catalog5-results"><div class="catalog-empty"><div><b>${state.block ? 'Подготавливаю выборку…' : 'Выберите блок данных'}</b>${state.block ? 'Загружаю индикаторы и доступные фильтры.' : 'Результаты появятся сразу после выбора одного блока.'}</div></div></main><aside class="catalog-panel sticky" id="catalog5-filter"><div class="catalog5-segment"><button data-c5-mode="taxonomy" class="${filterMode === 'taxonomy' ? 'active' : ''}">Таксономия</button><button data-c5-mode="attributes" class="${filterMode === 'attributes' ? 'active' : ''}">Атрибуты</button></div><div id="catalog5-filter-content" class="catalog-empty"><div><b>Фильтры</b>Сначала выберите блок данных.</div></div></aside></div>`;
+  const input = root.querySelector('#catalog5-query');
+  input.addEventListener('keydown', event => { if (event.key === 'Enter') setState(view, { q: input.value.trim(), cursor: null }); });
+  root.querySelectorAll('[data-c5-mode]').forEach(button => button.addEventListener('click', () => setState(view, { filterMode: button.dataset.c5Mode }, { replace: true })));
+  root.querySelectorAll('[data-c5-block]').forEach(button => button.addEventListener('click', () => setState(view, {
+    ...clearFilterPatch(), block: button.dataset.c5Block, q: null,
+  })));
+  if (!state.block) return;
+  const [facetResponse, resultResponse] = await Promise.all([
+    catalogApi.facets(apiParams(state)),
+    catalogApi.indicators({ ...apiParams(state), allowBlockOnly: 1 }),
+  ]);
+  const facets = facetResponse.facets || {};
+  const filterRoot = root.querySelector('#catalog5-filter-content');
+  filterRoot.className = '';
+  filterRoot.innerHTML = filterMode === 'taxonomy'
+    ? `<div class="catalog-panel-title">Тематический путь</div>${facetGroups(view, LEVELS.filter(level => facets[level]?.length), facets, state, CATALOG5_TAXONOMY_LABELS)}`
+    : `<div class="catalog-panel-title">Атрибуты ряда</div>${facetGroups(view, ATTRIBUTE_DIMENSIONS, facets, state)}`;
+  bindFacetPanels(filterRoot, view, { dependentTaxonomy: true });
+  const resultRoot = root.querySelector('#catalog5-results');
+  resultRoot.innerHTML = cards(resultResponse, view, state);
+  bindResults(resultRoot, view);
+}
+
+function groupHierarchyParams(level, state) {
+  const index = GROUP_LEVELS.indexOf(level);
+  return {
+    level, taxonomy: 3,
+    ...(state.block ? { blockId: state.block } : {}),
+    ...Object.fromEntries(GROUP_LEVELS.slice(0, index).filter(key => state[key]).map(key => [`${key}Id`, state[key]])),
+  };
+}
+
+async function loadGroupLevel(level, state) {
+  const response = await catalogApi.hierarchy(groupHierarchyParams(level, state));
+  response.items.forEach(item => nodeCache.set(`3:${item.alias}`, item));
+  return response.items;
+}
+
+function groupBreadcrumb(state) {
+  const parts = ['<button data-c6-back="topic">Все темы</button>'];
+  GROUP_LEVELS.forEach((level, index) => {
+    if (state[level]) parts.push(`<i>›</i><button data-c6-back="${GROUP_LEVELS[index + 1] || 'results'}">${esc(nodeCache.get(`3:${state[level]}`)?.name || state[level])}</button>`);
+  });
+  return `<div class="catalog-breadcrumbs">${parts.join('')}</div>`;
+}
+
+function groupSummary(group, view, state) {
+  const expanded = catalog6Expanded.has(group.groupId);
+  return `<article class="catalog6-group" data-group-id="${esc(group.groupId)}"><button class="catalog6-group-head" data-toggle-group aria-expanded="${expanded}"><span><b>${esc(group.name)}</b><code>${esc(group.indicatorCode)}</code><small>${esc(group.taxonomy?.path || [group.taxonomy?.topic?.name, group.taxonomy?.theme?.name, group.taxonomy?.subtheme?.name].filter(Boolean).join(' › '))}</small></span><span><em>${fmt(group.seriesCount)} рядов</em><i>${expanded ? '−' : '+'}</i></span></button><div class="catalog6-group-body" ${expanded ? '' : 'hidden'}>${expanded ? '<div class="catalog-empty">Загрузка рядов…</div>' : ''}</div></article>`;
+}
+
+function groupSeriesParams(panel, cursor = null) {
+  return { q: panel.q, ...panel.filters, cursor, limit: 20 };
+}
+
+function groupFacetSelect(key, items, selected) {
+  if (!items || items.length <= 1) return '';
+  return `<label class="catalog-select"><span>${FACET_LABELS[key]}</span><select data-c6-series-filter="${key}"><option value="">Все</option>${items.map(item => `<option value="${esc(item.value)}" ${selected === item.value ? 'selected' : ''}>${esc(item.label || item.value)} (${fmt(item.count)})</option>`).join('')}</select></label>`;
+}
+
+function renderGroupPanel(groupId, body, panel) {
+  const items = panel.items || [];
+  body.innerHTML = `<div class="catalog6-series-tools"><label class="catalog-select"><span>Поиск внутри группы</span><input data-c6-series-query value="${esc(panel.q || '')}" placeholder="Мнемоника, география или название"></label>${ATTRIBUTE_DIMENSIONS.map(key => groupFacetSelect(key, panel.facets?.[key], panel.filters?.[key])).join('')}</div><div class="catalog6-series-result">${items.length ? `<div class="catalog-result-head"><span>Рядов: ${fmt(panel.total)}</span><span>показано ${fmt(items.length)}</span></div><div class="catalog-result-list">${items.map(item => card(item, 'catalog-6', currentState('catalog-6'))).join('')}</div>${panel.nextCursor ? '<button class="catalog-loadmore" data-c6-more>Показать ещё</button>' : ''}` : '<div class="catalog-empty"><div><b>Ряды не найдены</b>Измените фильтры внутри группы.</div></div>'}</div>`;
+  const query = body.querySelector('[data-c6-series-query]');
+  query?.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return;
+    panel.q = query.value.trim(); panel.items = []; panel.cursor = null;
+    loadGroupPanel(groupId, body);
+  });
+  body.querySelectorAll('[data-c6-series-filter]').forEach(select => select.addEventListener('change', () => {
+    panel.filters[select.dataset.c6SeriesFilter] = select.value || null;
+    panel.items = []; panel.cursor = null;
+    loadGroupPanel(groupId, body);
+  }));
+  body.querySelector('[data-c6-more]')?.addEventListener('click', () => loadGroupPanel(groupId, body, { append: true, cursor: panel.nextCursor }));
+  bindResults(body, 'catalog-6');
+}
+
+async function loadGroupPanel(groupId, body, { append = false, cursor = null } = {}) {
+  const panel = catalog6Panels.get(groupId) || { q: '', filters: {}, items: [], cursor: null, facets: null };
+  catalog6Panels.set(groupId, panel);
+  body.hidden = false;
+  body.innerHTML = '<div class="catalog-empty">Загрузка рядов группы…</div>';
+  try {
+    const [series, facetResponse] = await Promise.all([
+      catalogApi.groupSeries(groupId, groupSeriesParams(panel, cursor)),
+      catalogApi.groupFacets(groupId, groupSeriesParams(panel)),
+    ]);
+    panel.items = append ? [...panel.items, ...series.items] : series.items;
+    panel.total = series.total;
+    panel.nextCursor = series.nextCursor;
+    panel.facets = facetResponse.facets || series.facets || {};
+    renderGroupPanel(groupId, body, panel);
+  } catch (error) {
+    body.innerHTML = `<div class="catalog-error"><b>Не удалось загрузить ряды.</b> ${esc(error.message)} <button data-c6-retry>Повторить</button></div>`;
+    body.querySelector('[data-c6-retry]')?.addEventListener('click', () => loadGroupPanel(groupId, body));
+  }
+}
+
+function bindGroupCards(root) {
+  root.querySelectorAll('.catalog6-group').forEach(group => {
+    const groupId = group.dataset.groupId;
+    const body = group.querySelector('.catalog6-group-body');
+    group.querySelector('[data-toggle-group]').addEventListener('click', () => {
+      if (catalog6Expanded.has(groupId)) {
+        catalog6Expanded.delete(groupId); body.hidden = true;
+        group.querySelector('[data-toggle-group]').setAttribute('aria-expanded', 'false');
+        group.querySelector('[data-toggle-group] i').textContent = '+';
+      } else {
+        catalog6Expanded.add(groupId);
+        group.querySelector('[data-toggle-group]').setAttribute('aria-expanded', 'true');
+        group.querySelector('[data-toggle-group] i').textContent = '−';
+        loadGroupPanel(groupId, body);
+      }
+    });
+    if (catalog6Expanded.has(groupId)) loadGroupPanel(groupId, body);
+  });
+}
+
+async function renderCatalog6() {
+  const view = 'catalog-6';
+  const root = mount(view);
+  const state = currentState(view);
+  const level = GROUP_LEVELS.find(key => !state[key]);
+  const showGroups = !level || Boolean(state.q);
+  root.innerHTML = `${header(view)}<div class="catalog-chipbar"><button class="catalog-chip ${!state.block ? 'active' : ''}" data-c6-block="">Все блоки</button>${blocks.map(block => `<button class="catalog-chip ${state.block === block.alias ? 'active' : ''}" data-c6-block="${esc(block.alias)}">${esc(block.name)}</button>`).join('')}</div>${searchBox(state.q, 'Поиск по любой серии внутри группы…', 'catalog6-query')}${groupBreadcrumb(state)}<div id="catalog6-stage"><div class="catalog-empty">Загрузка…</div></div>`;
+  root.querySelectorAll('[data-c6-block]').forEach(button => button.addEventListener('click', () => setState(view, { ...clearFilterPatch(), block: button.dataset.c6Block || null, q: null })));
+  const input = root.querySelector('#catalog6-query');
+  input.addEventListener('keydown', event => { if (event.key === 'Enter') setState(view, { q: input.value.trim(), cursor: null }); });
+  root.querySelectorAll('[data-c6-back]').forEach(button => button.addEventListener('click', () => {
+    const target = button.dataset.c6Back;
+    const index = GROUP_LEVELS.indexOf(target);
+    const patch = { q: null, cursor: null };
+    (index < 0 ? GROUP_LEVELS : GROUP_LEVELS.slice(index)).forEach(key => { patch[key] = null; });
+    setState(view, patch);
+  }));
+  const stage = root.querySelector('#catalog6-stage');
+  if (!showGroups) {
+    const items = await loadGroupLevel(level, state);
+    stage.innerHTML = levelRows(level, items).replaceAll('data-level=', 'data-c6-level=');
+    stage.querySelectorAll('[data-c6-level]').forEach(button => button.addEventListener('click', () => {
+      const selectedLevel = button.dataset.c6Level;
+      const patch = { [selectedLevel]: button.dataset.alias, q: null, cursor: null };
+      GROUP_LEVELS.slice(GROUP_LEVELS.indexOf(selectedLevel) + 1).forEach(key => { patch[key] = null; });
+      setState(view, patch);
+    }));
+    return;
+  }
+  const params = { ...apiParams(state), taxonomy: 3 };
+  const [facetResponse, groupResponse] = await Promise.all([catalogApi.facets(params), catalogApi.groups(params)]);
+  const facets = facetResponse.facets || {};
+  stage.innerHTML = `<div class="catalog-layout"><aside class="catalog-panel sticky"><div class="catalog-panel-title">Атрибуты групп</div>${facetGroups(view, ATTRIBUTE_DIMENSIONS, facets, state)}</aside><main id="catalog6-groups">${groupResponse.items?.length ? `<div class="catalog-result-head"><span>Групп: ${fmt(groupResponse.total)}</span><span>агрегация до пагинации</span></div>${groupResponse.items.map(group => groupSummary(group, view, state)).join('')}${groupResponse.nextCursor ? `<button class="catalog-loadmore" data-next-cursor="${groupResponse.nextCursor}">Следующая страница групп</button>` : ''}` : '<div class="catalog-empty"><div><b>Группы не найдены</b>Измените путь, фильтры или поисковый запрос.</div></div>'}</main></div>`;
+  bindFacetPanels(stage, view);
+  stage.querySelector('[data-next-cursor]')?.addEventListener('click', event => setState(view, { cursor: event.currentTarget.dataset.nextCursor }));
+  bindGroupCards(stage);
+}
+
+function loadCatalog7Layout() {
+  try { return { ...DEFAULT_CATALOG7_LAYOUT, ...JSON.parse(localStorage.getItem(CATALOG7_LAYOUT_KEY) || '{}') }; }
+  catch { return { ...DEFAULT_CATALOG7_LAYOUT }; }
+}
+
+function saveCatalog7Layout(layout) {
+  localStorage.setItem(CATALOG7_LAYOUT_KEY, JSON.stringify(layout));
+}
+
+function selectedSeriesData(item) {
+  return { ...item, dates: CATALOG7_DATES, values: CATALOG7_SERIES[item.slot], color: CATALOG7_COLORS[item.slot] };
+}
+
+function catalog7Workbench(layout) {
+  const all = selectedItems(catalog7Selection);
+  const included = selectedItems(catalog7Selection, { includedOnly: true }).map(selectedSeriesData);
+  let content = '';
+  if (layout.tab === 'table') {
+    content = included.length ? `<div class="catalog7-demo-label" title="Для прототипа выбранным индикаторам назначаются фиксированные демонстрационные временные ряды.">Демо-данные · фиксированные ряды</div><div class="catalog7-table-wrap"><table><thead><tr><th>Период</th>${included.map(item => `<th title="${esc(item.indicator.name)}"><span>${esc(item.indicator.name)}</span><code>${esc(item.indicator.mnemonic)}</code></th>`).join('')}</tr></thead><tbody>${CATALOG7_DATES.map((date, index) => `<tr><td>${date}</td>${included.map(item => `<td>${String(item.values[index]).replace('.', ',')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : '<div class="catalog-empty"><div><b>Нет рядов в таблице</b>Отметьте «Включить в данные» у выбранных индикаторов.</div></div>';
+  } else if (layout.tab === 'chart') {
+    content = included.length ? '<div class="catalog7-demo-label" title="Для прототипа выбранным индикаторам назначаются фиксированные демонстрационные временные ряды.">Демо-данные · фиксированные ряды</div><div id="catalog7-chart" role="img" aria-label="Сравнение выбранных индикаторов"></div>' : '<div class="catalog-empty"><div><b>Нет рядов на графике</b>Отметьте «Включить в данные» у выбранных индикаторов.</div></div>';
+  } else {
+    content = all.length ? `<div class="catalog7-selected-list">${all.map(item => `<article><span class="catalog7-series-color" style="--series-color:${CATALOG7_COLORS[item.slot]}"></span><label title="Включить в таблицу и график"><input type="checkbox" data-c7-include="${esc(item.indicator.seriesId)}" ${item.includeInData ? 'checked' : ''}><span>В данные</span></label><div><b>${esc(item.indicator.name)}</b><code>${esc(item.indicator.mnemonic)}</code></div><button data-c7-remove="${esc(item.indicator.seriesId)}" aria-label="Удалить индикатор">×</button></article>`).join('')}</div>` : '<div class="catalog-empty"><div><b>Рабочая область пуста</b>Выберите индикаторы флажками в результатах.</div></div>';
+  }
+  return `<div class="catalog7-workbench-head"><div><b>Выбрано ${all.length}/10</b><span>${included.length} включено в данные</span></div>${all.length ? '<button data-c7-clear>Очистить</button>' : ''}</div><div class="catalog7-tabs" role="tablist">${[['list','Список'],['table','Таблица'],['chart','График']].map(([key, label]) => `<button role="tab" data-c7-tab="${key}" aria-selected="${layout.tab === key}" class="${layout.tab === key ? 'active' : ''}">${label}</button>`).join('')}</div><div class="catalog7-tab-content">${content}</div>`;
+}
+
+function drawCatalog7Chart(root) {
+  const dom = root.querySelector('#catalog7-chart');
+  if (!dom || !window.echarts) return;
+  const included = selectedItems(catalog7Selection, { includedOnly: true }).map(selectedSeriesData);
+  const chart = window.echarts.getInstanceByDom(dom) || window.echarts.init(dom);
+  chart.setOption({
+    backgroundColor: 'transparent', color: included.map(item => item.color),
+    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } }, legend: { type: 'scroll', textStyle: { color: '#99a7bc' } },
+    grid: { left: 46, right: 22, top: 58, bottom: 38 },
+    xAxis: { type: 'category', data: CATALOG7_DATES, axisLabel: { color: '#71819a' }, axisLine: { lineStyle: { color: '#354157' } } },
+    yAxis: { type: 'value', scale: true, axisLabel: { color: '#71819a' }, splitLine: { lineStyle: { color: 'rgba(120,140,170,.16)' } } },
+    series: included.map(item => ({ name: item.indicator.name, type: 'line', showSymbol: false, smooth: .2, data: item.values, lineStyle: { width: 2 } })),
+  }, true);
+  requestAnimationFrame(() => chart.resize());
+}
+
+function bindCatalog7Workbench(root, layout) {
+  root.querySelectorAll('[data-c7-tab]').forEach(button => button.addEventListener('click', () => {
+    layout.tab = button.dataset.c7Tab; saveCatalog7Layout(layout); refreshCatalog7Workbench(root, layout);
+  }));
+  root.querySelectorAll('[data-c7-include]').forEach(input => input.addEventListener('change', () => {
+    toggleInclude(catalog7Selection, input.dataset.c7Include, input.checked); refreshCatalog7Workbench(root, layout);
+  }));
+  root.querySelectorAll('[data-c7-remove]').forEach(button => button.addEventListener('click', () => {
+    removeSelection(catalog7Selection, button.dataset.c7Remove);
+    const resultCheckbox = root.querySelector(`[data-select-series="${CSS.escape(button.dataset.c7Remove)}"]`);
+    if (resultCheckbox) resultCheckbox.checked = false;
+    refreshCatalog7Workbench(root, layout);
+  }));
+  root.querySelector('[data-c7-clear]')?.addEventListener('click', () => {
+    catalog7Selection.clear(); root.querySelectorAll('[data-select-series]').forEach(input => { input.checked = false; }); refreshCatalog7Workbench(root, layout);
+  });
+  drawCatalog7Chart(root);
+}
+
+function refreshCatalog7Workbench(root, layout) {
+  const workbench = root.querySelector('#catalog7-workbench');
+  if (workbench) { workbench.innerHTML = catalog7Workbench(layout); bindCatalog7Workbench(root, layout); }
+  root.querySelectorAll('[data-c7-count]').forEach(node => { node.textContent = `${catalog7Selection.size}/10`; });
+}
+
+function bindCatalog7Splitter(root, layout) {
+  const splitter = root.querySelector('[data-c7-splitter]');
+  if (!splitter) return;
+  splitter.addEventListener('pointerdown', event => {
+    splitter.setPointerCapture(event.pointerId);
+    const move = moveEvent => {
+      layout.analysisWidth = Math.max(320, Math.min(720, window.innerWidth - moveEvent.clientX - 28));
+      root.querySelector('.catalog7-layout')?.style.setProperty('--analysis-width', `${layout.analysisWidth}px`);
+      const chartDom = root.querySelector('#catalog7-chart');
+      if (chartDom) window.echarts?.getInstanceByDom(chartDom)?.resize();
+    };
+    const up = () => { saveCatalog7Layout(layout); splitter.removeEventListener('pointermove', move); };
+    splitter.addEventListener('pointermove', move); splitter.addEventListener('pointerup', up, { once: true });
+  });
+}
+
+async function renderCatalog7() {
+  const view = 'catalog-7';
+  const root = mount(view);
+  const state = currentState(view);
+  const layout = loadCatalog7Layout();
+  const layoutColumns = [layout.showTaxonomy && '220px', layout.showResults && 'minmax(360px,1fr)', layout.showAttributes && '220px', layout.showAnalysis ? '7px minmax(320px,var(--analysis-width))' : '44px'].filter(Boolean).join(' ');
+  const layoutClasses = `${layout.showResults ? '' : ' results-hidden'}${layout.showAnalysis ? '' : ' analysis-hidden'}`;
+  root.innerHTML = `${header(view)}<div class="catalog7-toolbar">${[['showTaxonomy','Таксономия'],['showAttributes','Атрибуты'],['showResults','Результаты'],['showAnalysis','Анализ']].map(([key, label]) => `<button data-c7-toggle="${key}" class="${layout[key] ? 'active' : ''}">${layout[key] ? 'Скрыть' : 'Показать'}: ${label}${key === 'showAnalysis' ? ' · <span data-c7-count>0/10</span>' : ''}</button>`).join('')}</div><div class="catalog-chipbar"><button class="catalog-chip ${!state.block ? 'active' : ''}" data-c7-block="">Все блоки</button>${blocks.map(block => `<button class="catalog-chip ${asList(state.block).includes(block.alias) ? 'active' : ''}" data-c7-block="${esc(block.alias)}">${esc(block.name)}</button>`).join('')}</div><div class="catalog7-layout${layoutClasses}" style="--analysis-width:${layout.analysisWidth}px;--catalog7-columns:${layoutColumns}">${layout.showTaxonomy ? '<aside class="catalog-panel catalog7-taxonomy" id="catalog7-taxonomy"><div class="catalog-empty">Загрузка таксономии…</div></aside>' : ''}${layout.showResults ? `<main class="catalog7-results">${searchBox(state.q, 'Поиск индикаторов…', 'catalog7-query')}<div id="catalog7-result-list"><div class="catalog-empty">Подготавливаю выборку…</div></div><div id="catalog7-selection-notice" aria-live="polite"></div></main>` : ''}${layout.showAttributes ? '<aside class="catalog-panel catalog7-attributes" id="catalog7-attributes"><div class="catalog-empty">Загрузка атрибутов…</div></aside>' : ''}${layout.showAnalysis ? '<div class="catalog7-splitter" data-c7-splitter title="Изменить ширину"></div><aside class="catalog-panel catalog7-analysis" id="catalog7-workbench"></aside>' : '<button class="catalog7-collapsed-rail" data-c7-expand-analysis aria-label="Развернуть аналитическую панель">Анализ <b data-c7-count>0/10</b></button>'}</div>`;
+  root.querySelectorAll('[data-c7-toggle]').forEach(button => button.addEventListener('click', () => {
+    const key = button.dataset.c7Toggle; layout[key] = !layout[key]; saveCatalog7Layout(layout); render(view);
+  }));
+  root.querySelector('[data-c7-expand-analysis]')?.addEventListener('click', () => { layout.showAnalysis = true; saveCatalog7Layout(layout); render(view); });
+  root.querySelectorAll('[data-c7-block]').forEach(button => button.addEventListener('click', () => setState(view, { ...clearFilterPatch(), block: button.dataset.c7Block || null })));
+  root.querySelector('#catalog7-query')?.addEventListener('keydown', event => { if (event.key === 'Enter') setState(view, { q: event.currentTarget.value.trim(), cursor: null }); });
+  refreshCatalog7Workbench(root, layout);
+  bindCatalog7Splitter(root, layout);
+  if (!layout.showTaxonomy && !layout.showAttributes && !layout.showResults) return;
+  const [facetResponse, resultResponse] = await Promise.all([
+    (layout.showTaxonomy || layout.showAttributes) ? catalogApi.facets(apiParams(state)) : Promise.resolve({ facets: {} }),
+    layout.showResults ? catalogApi.indicators(apiParams(state)) : Promise.resolve(null),
+  ]);
+  const facets = facetResponse.facets || {};
+  if (layout.showTaxonomy) root.querySelector('#catalog7-taxonomy').innerHTML = `<div class="catalog-panel-title">Таксономия</div>${facetGroups(view, LEVELS, facets, state)}`;
+  if (layout.showAttributes) root.querySelector('#catalog7-attributes').innerHTML = `<div class="catalog-panel-title">Атрибуты</div>${facetGroups(view, ATTRIBUTE_DIMENSIONS, facets, state)}`;
+  bindFacetPanels(root, view);
+  if (layout.showResults) {
+    const resultRoot = root.querySelector('#catalog7-result-list');
+    resultRoot.innerHTML = cards(resultResponse, view, state, { selectable: true });
+    bindResults(resultRoot, view);
+    const byId = new Map(resultResponse.items.map(item => [String(item.seriesId), item]));
+    resultRoot.querySelectorAll('[data-select-series]').forEach(input => input.addEventListener('change', event => {
+      event.stopPropagation();
+      const id = input.dataset.selectSeries;
+      if (input.checked) {
+        const result = addSelection(catalog7Selection, byId.get(id));
+        if (!result.added && result.reason === 'limit') {
+          input.checked = false;
+          root.querySelector('#catalog7-selection-notice').innerHTML = '<div class="catalog-error">Можно выбрать не более 10 индикаторов.</div>';
+        }
+      } else removeSelection(catalog7Selection, id);
+      refreshCatalog7Workbench(root, layout);
+    }));
+  }
+}
+
 async function renderIndicator() {
   const view = 'catalog-indicator';
   const root = mount(view);
@@ -327,6 +653,9 @@ async function render(view) {
       if (currentState(view).mode === 'search') await renderCatalog2(view, { embedded: true, allowBlockOnly: true });
       else await renderCatalog1(view, { searchJump: true });
     }
+    if (view === 'catalog-5') await renderCatalog5();
+    if (view === 'catalog-6') await renderCatalog6();
+    if (view === 'catalog-7') await renderCatalog7();
     if (view === 'catalog-indicator') await renderIndicator();
   } catch (error) {
     root.innerHTML = `<div class="catalog-error"><b>Каталог не загрузился.</b> ${esc(error.message)}</div>`;
@@ -343,7 +672,7 @@ async function activateRoute() {
 
 document.addEventListener('click', event => {
   const item = event.target.closest('.nav-item[data-view]');
-  if (!item || !['catalog-1', 'catalog-2', 'catalog-3', 'catalog-4'].includes(item.dataset.view)) return;
+  if (!item || !['catalog-1', 'catalog-2', 'catalog-3', 'catalog-4', 'catalog-5', 'catalog-6', 'catalog-7'].includes(item.dataset.view)) return;
   event.preventDefault();
   event.stopImmediatePropagation();
   navigate(item.dataset.view, currentState(item.dataset.view));

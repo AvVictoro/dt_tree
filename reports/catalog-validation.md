@@ -14,5 +14,6 @@ Status: **PASS_FILE**
 - PASS — mnemonics_unique: `94232`
 - PASS — exact_mnemonic: `"OBJCPRM.RU75.RUB.TH.NA.M.DOM.A.AVG.NSA"`
 - PASS — taxonomy4_complete: `94232`
+- PASS — taxonomy3_complete: `123`
 - PASS — no_synthetic_observations: `94232`
 - PASS — same_name_variants: `10816`

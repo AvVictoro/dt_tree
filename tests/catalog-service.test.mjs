@@ -92,3 +92,26 @@ test('hierarchy accepts explicit parent ids and synchronizes geographic leaves',
   const result = await get(`/api/catalog/hierarchy?${query}`);
   assert.ok(result.payload.items.some(item => item.alias === path.subtheme2.alias && item.geographyCode === 'RU75'));
 });
+
+test('three-level hierarchy is available for catalog 6', async () => {
+  const result = await get('/api/catalog/hierarchy?taxonomy=3&level=topic');
+  assert.equal(result.status, 200);
+  assert.equal(result.payload.taxonomy, '3');
+  assert.ok(result.payload.items.length > 0);
+});
+
+test('catalog 6 groups before pagination and expands group series', async () => {
+  const result = await get('/api/catalog/groups?q=OBJCPRM.RU75.RUB.TH.NA.M.DOM.A.AVG.NSA&limit=1');
+  assert.equal(result.status, 200);
+  assert.equal(result.payload.items.length, 1);
+  const group = result.payload.items[0];
+  assert.ok(group.groupId);
+  assert.ok(group.seriesCount >= 1);
+  assert.equal(Object.hasOwn(group, '_score'), false);
+  const series = await get(`/api/catalog/groups/${encodeURIComponent(group.groupId)}/series?limit=1`);
+  assert.equal(series.status, 200);
+  assert.equal(series.payload.items.length, 1);
+  assert.ok(series.payload.total >= group.seriesCount);
+  const facets = await get(`/api/catalog/groups/${encodeURIComponent(group.groupId)}/facets`);
+  assert.ok(Array.isArray(facets.payload.facets.frequency));
+});

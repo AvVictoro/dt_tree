@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-26T11:46:13.801Z",
+  "generatedAt": "2026-08-26T21:50:38.055Z",
   "mode": "file",
   "status": "PASS_FILE",
   "controlIndicators": 1606756,
@@ -57,6 +57,11 @@
       "name": "taxonomy4_complete",
       "passed": true,
       "details": 94232
+    },
+    {
+      "name": "taxonomy3_complete",
+      "passed": true,
+      "details": 123
     },
     {
       "name": "no_synthetic_observations",
