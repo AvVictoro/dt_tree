@@ -40,6 +40,13 @@ FREQUENCIES = {
     "NA": "Не указана",
 }
 
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+LABEL_OVERRIDES = json.loads((ROOT / "catalog/config/label-overrides.json").read_text(encoding="utf-8"))
+
+
+def display_block_name(alias: str, source_name: str):
+    return LABEL_OVERRIDES.get("blocks", {}).get(alias, source_name)
+
 
 def iter_csv_members(archive_path: pathlib.Path, marker: str):
     with zipfile.ZipFile(archive_path) as archive:
@@ -79,7 +86,7 @@ def parse_args():
     parser.add_argument("--blocks", required=True, type=pathlib.Path)
     parser.add_argument("--taxonomy3", required=True, type=pathlib.Path)
     parser.add_argument("--output", required=True, type=pathlib.Path)
-    parser.add_argument("--per-block", type=int, default=18)
+    parser.add_argument("--per-block", type=int, default=200)
     return parser.parse_args()
 
 
@@ -91,9 +98,11 @@ def main():
         alias = row.get("block_alias") or row.get("alias") or row.get("primary_block_alias")
         if not alias:
             continue
+        source_name = row.get("block") or row.get("name") or row.get("primary_block") or alias
         blocks.append({
             "alias": alias,
-            "name": row.get("block") or row.get("name") or row.get("primary_block") or alias,
+            "sourceName": source_name,
+            "name": display_block_name(alias, source_name),
             "description": row.get("description") or row.get("definition") or "",
             "primarySeries": int(row.get("primary_indicator_count") or 0),
             "totalSeries": int(row.get("all_membership_indicator_count") or row.get("primary_indicator_count") or 0),
@@ -189,14 +198,15 @@ def main():
             "blocks": {
                 "primary": {
                     "alias": block_row.get("primary_block_alias", ""),
-                    "name": block_row.get("primary_block", ""),
+                    "sourceName": block_row.get("primary_block", ""),
+                    "name": display_block_name(block_row.get("primary_block_alias", ""), block_row.get("primary_block", "")),
                 },
                 "secondary": [
-                    {"alias": alias, "name": secondary_names[index] if index < len(secondary_names) else alias}
+                    {"alias": alias, "sourceName": secondary_names[index] if index < len(secondary_names) else alias, "name": display_block_name(alias, secondary_names[index] if index < len(secondary_names) else alias)}
                     for index, alias in enumerate(secondary_aliases)
                 ],
                 "all": [
-                    {"alias": alias, "name": all_names[index] if index < len(all_names) else alias}
+                    {"alias": alias, "sourceName": all_names[index] if index < len(all_names) else alias, "name": display_block_name(alias, all_names[index] if index < len(all_names) else alias)}
                     for index, alias in enumerate(all_aliases)
                 ],
             },
@@ -215,14 +225,15 @@ def main():
 
     payload = {
         "generatedAt": datetime.now(timezone.utc).isoformat(),
-        "demo": True,
         "manifest": {
+            "mode": "demo",
             "datasetVersion": "taxonomy-final-2026-08-25",
             "taxonomyMode": "four-level",
             "threeLevelAvailable": True,
-            "demo": True,
+            "controlIndicators": TOTALS["indicators"],
+            "queryableIndicators": len(indicators),
+            "fullDataReady": False,
             "totals": TOTALS,
-            "demoIndicators": len(indicators),
             "exactMnemonic": EXACT_MNEMONIC,
         },
         "blocks": blocks,

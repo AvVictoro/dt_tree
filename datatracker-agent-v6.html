@@ -9589,7 +9589,37 @@
         </section>
 
         <!-- ---------- VIEW: CATALOG EXPLORER ---------- -->
-        <section class="view" id="view-catalog"><div class="catalog-experiment" id="catalog-mount-catalog"></div></section>
+        <section class="view" id="view-catalog">
+          <h1 class="h1">Каталог показателей</h1>
+          <p class="h1-sub" id="catalog-subtitle">Единый поиск по источникам, тематикам, названиям и мнемоникам</p>
+
+          <div class="cat-top">
+            <div class="cat-search">
+              <span class="sp">⌕</span>
+              <input id="cat-input" placeholder="Название, мнемоника или тема…" autocomplete="off" />
+              <span class="cnt" id="cat-cnt">— показателей</span>
+            </div>
+            <button class="btn ghost sm" onclick="openPalette()">Спросить агента ↗</button>
+          </div>
+
+          <div class="catalog-tabs" role="tablist" aria-label="Режим поиска каталога">
+            <button class="catalog-tab active" type="button" role="tab" aria-selected="true" data-catalog-mode="sources" onclick="switchCatalogMode('sources')">Базы данных</button>
+            <button class="catalog-tab" type="button" role="tab" aria-selected="false" data-catalog-mode="categories" onclick="switchCatalogMode('categories')">По категориям</button>
+            <button class="catalog-tab" type="button" role="tab" aria-selected="false" data-catalog-mode="facets" onclick="switchCatalogMode('facets')">Подбор показателей</button>
+          </div>
+
+          <div class="catalog-browser">
+            <aside class="catalog-sidebar" id="catalog-sidebar"></aside>
+            <div class="catalog-results" id="cat-tree"></div>
+          </div>
+
+          <div class="selbar" id="cat-selbar" style="display:none;">
+            <span>Выбрано: <b id="sel-n">0</b></span>
+            <span style="color:var(--muted);font-size:12.5px" id="sel-names">—</span>
+            <div style="margin-left:auto;display:flex;gap:8px" id="sel-actions">
+            </div>
+          </div>
+        </section>
         <section class="view" id="view-catalog-1"><div class="catalog-experiment" id="catalog-mount-catalog-1"></div></section>
         <section class="view" id="view-catalog-2"><div class="catalog-experiment" id="catalog-mount-catalog-2"></div></section>
         <section class="view" id="view-catalog-3"><div class="catalog-experiment" id="catalog-mount-catalog-3"></div></section>
@@ -14178,7 +14208,7 @@
       const appEl = document.querySelector('.app');
       appEl.classList.remove('mobile-sidebar-open', 'mobile-copilot-open');
       if (window.matchMedia('(max-width: 900px)').matches) applyShellPanelState(readShellPanelState());
-      if (view === 'chat' || view === 'catalog' || view === 'catalog-1' || view === 'catalog-2' || view === 'catalog-3' || view === 'catalog-indicator') {
+      if (view === 'chat' || view === 'catalog-1' || view === 'catalog-2' || view === 'catalog-3' || view === 'catalog-indicator') {
         appEl.classList.add('hide-copilot');
       } else {
         appEl.classList.remove('hide-copilot');
@@ -14191,7 +14221,8 @@
       }
 
       if (view === 'home') { renderHome(); }
-      if ((view === 'catalog' || view === 'catalog-1' || view === 'catalog-2' || view === 'catalog-3' || view === 'catalog-indicator') && window.catalogApp) { window.catalogApp.render(view); }
+      if (view === 'catalog') { renderTree(document.getElementById('cat-input').value); updateSelbar(); }
+      if ((view === 'catalog-1' || view === 'catalog-2' || view === 'catalog-3' || view === 'catalog-indicator') && window.catalogApp) { window.catalogApp.render(view); }
       if (view === 'indicator') { renderIndChart(); }
       if (view === 'workspace') {/* render ws detail is handled by openWorkspaceDetail */ }
       if (view === 'workspaces') { renderWorkspacesList(); }

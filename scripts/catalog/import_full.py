@@ -25,6 +25,13 @@ EXPECTED = {
     "active_paths": 18_636, "memberships": 3_165_548,
 }
 
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+LABEL_OVERRIDES = json.loads((ROOT / "catalog/config/label-overrides.json").read_text(encoding="utf-8"))
+
+
+def display_block_name(alias, source_name):
+    return LABEL_OVERRIDES.get("blocks", {}).get(alias, source_name)
+
 
 def csv_members(archive_path: pathlib.Path, marker: str):
     with zipfile.ZipFile(archive_path) as archive:
@@ -74,9 +81,9 @@ def load_blocks(connection, version_id, archive_path):
     with connection.transaction():
         for row in rows:
             connection.execute("""
-                INSERT INTO catalog_data_block(dataset_version_id,alias,sort_order,name,block_type,description,target_clients,inclusion_logic,pricing_note,primary_indicator_count,membership_indicator_count)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """, (version_id, row["alias"], int(row["sort_order"]), row["name"], row["block_type"], row["description"], row["target_clients"], row["inclusion_logic"], row["pricing_note"], int(row["primary_indicator_count"]), int(row["all_membership_indicator_count"])))
+                INSERT INTO catalog_data_block(dataset_version_id,alias,sort_order,source_name,name,block_type,description,target_clients,inclusion_logic,pricing_note,primary_indicator_count,membership_indicator_count)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (version_id, row["alias"], int(row["sort_order"]), row["name"], display_block_name(row["alias"], row["name"]), row["block_type"], row["description"], row["target_clients"], row["inclusion_logic"], row["pricing_note"], int(row["primary_indicator_count"]), int(row["all_membership_indicator_count"])))
     return len(rows)
 
 

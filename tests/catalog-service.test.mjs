@@ -10,14 +10,20 @@ async function get(pathname) {
 test('manifest exposes full control totals and local fixture size', async () => {
   const result = await get('/api/catalog/manifest');
   assert.equal(result.status, 200);
-  assert.equal(result.payload.totals.indicators, 1_606_756);
-  assert.ok(result.payload.demoIndicators >= 270);
+  assert.equal(result.payload.mode, 'demo');
+  assert.equal(result.payload.controlIndicators, 1_606_756);
+  assert.equal(Number.isInteger(result.payload.queryableIndicators), true);
+  assert.ok(result.payload.queryableIndicators >= 270);
+  assert.equal(result.payload.fullDataReady, false);
 });
 
 test('all fifteen blocks are available', async () => {
   const result = await get('/api/catalog/blocks');
   assert.equal(result.payload.items.length, 15);
   assert.ok(result.payload.items.every(block => block.demoSeries > 0));
+  const russianEconomy = result.payload.items.find(block => block.alias === 'BLOCK_02_RUSSIA_MACRO');
+  assert.equal(russianEconomy.name, 'Российская экономика');
+  assert.equal(russianEconomy.sourceName, 'Российская экономика: макроядро');
 });
 
 test('exact mnemonic is the first and only exact match', async () => {
@@ -37,7 +43,7 @@ test('empty filter builder does not dump the complete catalog', async () => {
   const result = await get('/api/catalog/indicators');
   assert.equal(result.payload.requiresRefinement, true);
   assert.equal(result.payload.items.length, 0);
-  assert.ok(result.payload.total >= 14_355);
+  assert.ok(result.payload.total >= 270);
 });
 
 test('OR inside one facet and AND between dimensions', async () => {
@@ -59,4 +65,22 @@ test('metadata-only series opens without synthetic observations', async () => {
   assert.equal(result.status, 200);
   assert.equal(result.payload.availability.hasTimeSeries, false);
   assert.equal(result.payload.availability.observationCount, 0);
+});
+
+test('facets expose four taxonomy groups and concrete geographies', async () => {
+  const result = await get('/api/catalog/facets');
+  assert.deepEqual(Object.keys(result.payload.taxonomy), ['topics', 'themes', 'subthemes', 'subthemes2']);
+  assert.ok(result.payload.attributes.geographies.some(item => item.value === 'RU'));
+  assert.ok(result.payload.taxonomy.subthemes2.length > 0);
+});
+
+test('hierarchy accepts explicit parent ids and synchronizes geographic leaves', async () => {
+  const detail = await get('/api/catalog/indicators/OBJCPRM.RU75.RUB.TH.NA.M.DOM.A.AVG.NSA');
+  const path = detail.payload.taxonomy4;
+  const query = new URLSearchParams({
+    level: 'subtheme2', blockId: 'BLOCK_01_DOMCLICK', topicId: path.topic.alias,
+    themeId: path.theme.alias, subthemeId: path.subtheme.alias, geography: 'RU75',
+  });
+  const result = await get(`/api/catalog/hierarchy?${query}`);
+  assert.ok(result.payload.items.some(item => item.alias === path.subtheme2.alias && item.geographyCode === 'RU75'));
 });

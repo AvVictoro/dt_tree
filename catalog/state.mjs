@@ -1,4 +1,4 @@
-export const CATALOG_VIEWS = new Set(['catalog', 'catalog-1', 'catalog-2', 'catalog-3', 'catalog-indicator']);
+export const CATALOG_VIEWS = new Set(['catalog-1', 'catalog-2', 'catalog-3', 'catalog-indicator']);
 
 export function readRoute() {
   const raw = location.hash.startsWith('#/') ? location.hash.slice(2) : '';

@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decodeCursor, encodeCursor, rankIndicators, searchableText } from '../catalog/lib/search.mjs';
+import { displayBlockName } from './label-overrides.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 let fixturePromise;
@@ -9,6 +10,16 @@ let fixturePromise;
 async function loadFixture() {
   fixturePromise ||= fs.readFile(path.join(root, 'catalog/demo/catalog-demo.json'), 'utf8').then(JSON.parse).then(data => {
     data.indicators.forEach(indicator => { indicator._searchText = searchableText(indicator); });
+    data.blocks = data.blocks.map(block => {
+      const sourceName = block.sourceName || block.name;
+      return { ...block, sourceName, name: displayBlockName(block.alias, sourceName) };
+    });
+    data.indicators.forEach(indicator => {
+      for (const block of [indicator.blocks?.primary, ...(indicator.blocks?.secondary || []), ...(indicator.blocks?.all || [])].filter(Boolean)) {
+        block.sourceName ||= block.name;
+        block.name = displayBlockName(block.alias, block.sourceName);
+      }
+    });
     return data;
   });
   return fixturePromise;
@@ -41,7 +52,8 @@ const FACET_LABELS = {
 };
 
 function values(params, key) {
-  return params.getAll(key).flatMap(value => value.split(',')).map(value => value.trim()).filter(Boolean);
+  const aliases = { block: ['block', 'blockId'], topic: ['topic', 'topicId'], theme: ['theme', 'themeId'], subtheme: ['subtheme', 'subthemeId'], subtheme2: ['subtheme2', 'subtheme2Id'] };
+  return (aliases[key] || [key]).flatMap(param => params.getAll(param)).flatMap(value => value.split(',')).map(value => value.trim()).filter(Boolean);
 }
 
 function applyFilters(indicators, params, omit = '') {
@@ -76,13 +88,6 @@ function hierarchyLevel(indicator, level, taxonomyMode) {
   return taxonomy?.[level];
 }
 
-function hierarchyParents(indicator, level, taxonomyMode) {
-  const levels = taxonomyMode === '3' ? ['topic', 'theme', 'subtheme'] : ['topic', 'theme', 'subtheme', 'subtheme2'];
-  const index = levels.indexOf(level);
-  const taxonomy = taxonomyMode === '3' ? indicator.taxonomy3 : indicator.taxonomy4;
-  return levels.slice(0, index).map(item => taxonomy?.[item]?.alias).filter(Boolean);
-}
-
 function json(payload, status = 200, headers = {}) {
   return { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...headers }, payload };
 }
@@ -96,24 +101,36 @@ export async function handleCatalogRequest({ method = 'GET', pathname, searchPar
   const data = await loadFixture();
   const route = pathname.replace(/^\/api\/catalog\/?/, '').replace(/\/$/, '');
   if (!route || route === 'health') return json({ ok: true, mode: 'demo', indicators: data.indicators.length });
-  if (route === 'manifest') return json(data.manifest);
+  if (route === 'manifest') return json({
+    mode: 'demo',
+    controlIndicators: Number(data.manifest?.controlIndicators || data.manifest?.totals?.indicators || 1_606_756),
+    queryableIndicators: Number(data.manifest?.queryableIndicators || data.indicators.length),
+    dataVersion: data.manifest?.datasetVersion || 'taxonomy-final-2026-08-25',
+    fullDataReady: false,
+    taxonomyMode: 'four-level',
+    threeLevelAvailable: true,
+    totals: data.manifest?.totals || {},
+  });
   if (route === 'blocks') return json({ items: data.blocks });
 
   if (route === 'hierarchy') {
     const level = searchParams.get('level') || 'topic';
     const taxonomyMode = searchParams.get('taxonomy') === '3' ? '3' : '4';
-    const parent = searchParams.get('parent');
     const filtered = applyFilters(data.indicators, searchParams);
     const counts = new Map();
     for (const indicator of filtered) {
-      if (parent && !hierarchyParents(indicator, level, taxonomyMode).includes(parent)) continue;
       const node = hierarchyLevel(indicator, level, taxonomyMode);
       if (!node?.alias) continue;
-      const current = counts.get(node.alias) || { ...node, count: 0 };
+      const current = counts.get(node.alias) || { ...node, count: 0, _geographies: new Set() };
       current.count += 1;
+      if (indicator.geography?.code) current._geographies.add(indicator.geography.code);
       counts.set(node.alias, current);
     }
-    return json({ level, taxonomy: taxonomyMode, items: [...counts.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'ru')) });
+    const items = [...counts.values()].map(({ _geographies, ...node }) => ({
+      ...node,
+      geographyCode: _geographies.size === 1 ? [..._geographies][0] : null,
+    })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'ru'));
+    return json({ level, taxonomy: taxonomyMode, items });
   }
 
   if (route === 'facets') {
@@ -129,7 +146,11 @@ export async function handleCatalogRequest({ method = 'GET', pathname, searchPar
       }
       facets[key] = [...count.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value, 'ru'));
     }
-    return json({ facets });
+    return json({
+      taxonomy: { topics: facets.topic, themes: facets.theme, subthemes: facets.subtheme, subthemes2: facets.subtheme2 },
+      attributes: { frequencies: facets.frequency, geographies: facets.geography, units: facets.unit, sources: facets.source },
+      facets,
+    });
   }
 
   const idMatch = route.match(/^indicators\/(.+)$/);

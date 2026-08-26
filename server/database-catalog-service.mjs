@@ -1,4 +1,5 @@
 import { decodeCursor, encodeCursor } from '../catalog/lib/search.mjs';
+import { displayBlockName } from './label-overrides.mjs';
 
 let poolPromise;
 async function pool() {
@@ -11,7 +12,8 @@ function json(payload, status = 200) {
 }
 
 function values(params, key) {
-  return params.getAll(key).flatMap(value => value.split(',')).map(value => value.trim()).filter(Boolean);
+  const aliases = { block: ['block', 'blockId'], topic: ['topic', 'topicId'], theme: ['theme', 'themeId'], subtheme: ['subtheme', 'subthemeId'], subtheme2: ['subtheme2', 'subtheme2Id'] };
+  return (aliases[key] || [key]).flatMap(param => params.getAll(param)).flatMap(value => value.split(',')).map(value => value.trim()).filter(Boolean);
 }
 
 const SIMPLE_COLUMNS = {
@@ -86,11 +88,13 @@ export async function handleDatabaseCatalogRequest({ method = 'GET', pathname, s
   if (route === 'manifest') {
     const { rows } = await db.query(`SELECT version_label,taxonomy_levels,indicator_count,control_totals FROM catalog_dataset_version WHERE status='active'`);
     if (!rows[0]) return json({ error: 'No active catalog version' }, 503);
-    return json({ datasetVersion: rows[0].version_label, taxonomyMode: rows[0].taxonomy_levels === 3 ? 'three-level' : 'four-level', threeLevelAvailable: true, demo: false, totals: rows[0].control_totals, demoIndicators: Number(rows[0].indicator_count) });
+    const controlIndicators = Number(rows[0].control_totals?.indicators || 1_606_756);
+    const queryableIndicators = Number(rows[0].indicator_count);
+    return json({ mode: 'database', controlIndicators, queryableIndicators, dataVersion: rows[0].version_label, fullDataReady: queryableIndicators === controlIndicators, taxonomyMode: rows[0].taxonomy_levels === 3 ? 'three-level' : 'four-level', threeLevelAvailable: true, totals: rows[0].control_totals });
   }
   if (route === 'blocks') {
-    const { rows } = await db.query(`SELECT alias,name,description,primary_indicator_count "primarySeries",membership_indicator_count "totalSeries",primary_indicator_count "demoSeries" FROM catalog_data_block WHERE dataset_version_id=(SELECT id FROM catalog_dataset_version WHERE status='active') ORDER BY sort_order`);
-    return json({ items: rows });
+    const { rows } = await db.query(`SELECT alias,coalesce(source_name,name) "sourceName",name,description,primary_indicator_count "primarySeries",membership_indicator_count "totalSeries",primary_indicator_count "demoSeries" FROM catalog_data_block WHERE dataset_version_id=(SELECT id FROM catalog_dataset_version WHERE status='active') ORDER BY sort_order`);
+    return json({ items: rows.map(row => ({ ...row, name: displayBlockName(row.alias, row.sourceName) })) });
   }
   if (route === 'hierarchy') {
     const taxonomy = searchParams.get('taxonomy') === '3' ? 3 : 4;
@@ -98,7 +102,7 @@ export async function handleDatabaseCatalogRequest({ method = 'GET', pathname, s
     const level = levels.includes(searchParams.get('level')) ? searchParams.get('level') : 'topic';
     const column = TAXONOMY_COLUMNS[level];
     const f = filters(searchParams);
-    const { rows } = await db.query(`SELECT n.node_id id,n.alias,n.name,count(*)::bigint count FROM catalog_indicator i JOIN catalog_indicator_taxonomy t ON t.dataset_version_id=i.dataset_version_id AND t.series_id=i.series_id AND t.taxonomy_levels=${taxonomy} JOIN catalog_taxonomy_node n ON n.dataset_version_id=i.dataset_version_id AND n.taxonomy_levels=${taxonomy} AND n.alias=${column} WHERE ${f.sql} GROUP BY n.node_id,n.alias,n.name ORDER BY count DESC,n.name`, f.args);
+    const { rows } = await db.query(`SELECT n.node_id id,n.alias,n.name,count(*)::bigint count,CASE WHEN count(DISTINCT i.geography_code)=1 THEN min(i.geography_code) END "geographyCode" FROM catalog_indicator i JOIN catalog_indicator_taxonomy t ON t.dataset_version_id=i.dataset_version_id AND t.series_id=i.series_id AND t.taxonomy_levels=${taxonomy} JOIN catalog_taxonomy_node n ON n.dataset_version_id=i.dataset_version_id AND n.taxonomy_levels=${taxonomy} AND n.alias=${column} WHERE ${f.sql} GROUP BY n.node_id,n.alias,n.name ORDER BY count DESC,n.name`, f.args);
     return json({ level, taxonomy: String(taxonomy), items: rows.map(row => ({ ...row, count: Number(row.count) })) });
   }
   const idMatch = route.match(/^indicators\/(.+)$/);
@@ -111,10 +115,16 @@ export async function handleDatabaseCatalogRequest({ method = 'GET', pathname, s
     const facets = {};
     for (const [key, column] of Object.entries(SIMPLE_COLUMNS)) {
       const f = filters(searchParams, { omit: key });
-      const { rows } = await db.query(`SELECT ${column} value,count(*)::bigint count FROM catalog_indicator i JOIN catalog_indicator_taxonomy t ON t.dataset_version_id=i.dataset_version_id AND t.series_id=i.series_id AND t.taxonomy_levels=4 WHERE ${f.sql} AND ${column} IS NOT NULL GROUP BY ${column} ORDER BY count DESC LIMIT 50`, f.args);
+      const { rows } = await db.query(`SELECT ${column} value,count(DISTINCT i.series_id)::bigint count FROM catalog_indicator i JOIN catalog_indicator_taxonomy t ON t.dataset_version_id=i.dataset_version_id AND t.series_id=i.series_id AND t.taxonomy_levels=4 WHERE ${f.sql} AND ${column} IS NOT NULL GROUP BY ${column} ORDER BY count DESC LIMIT 100`, f.args);
       facets[key] = rows.map(row => ({ value: row.value, label: row.value, count: Number(row.count) }));
     }
-    return json({ facets });
+    const taxonomyLevels = { topic: 1, theme: 2, subtheme: 3, subtheme2: 4 };
+    for (const [key, column] of Object.entries(TAXONOMY_COLUMNS)) {
+      const f = filters(searchParams, { omit: key });
+      const { rows } = await db.query(`SELECT ${column} value,n.name label,count(DISTINCT i.series_id)::bigint count FROM catalog_indicator i JOIN catalog_indicator_taxonomy t ON t.dataset_version_id=i.dataset_version_id AND t.series_id=i.series_id AND t.taxonomy_levels=4 JOIN catalog_taxonomy_node n ON n.dataset_version_id=i.dataset_version_id AND n.taxonomy_levels=4 AND n.level=${taxonomyLevels[key]} AND n.alias=${column} WHERE ${f.sql} AND ${column} IS NOT NULL GROUP BY ${column},n.name ORDER BY count DESC,n.name LIMIT 1000`, f.args);
+      facets[key] = rows.map(row => ({ value: row.value, label: row.label, count: Number(row.count) }));
+    }
+    return json({ taxonomy: { topics: facets.topic, themes: facets.theme, subthemes: facets.subtheme, subthemes2: facets.subtheme2 }, attributes: { frequencies: facets.frequency, geographies: facets.geography, units: facets.unit, sources: facets.source }, facets });
   }
   if (route === 'suggest' || route === 'search' || route === 'indicators') {
     const refinementKeys = ['q', 'topic', 'theme', 'subtheme', 'subtheme2', 'source', 'frequency', 'unit', 'geographyScope', 'geography'];

@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS catalog_data_block (
   dataset_version_id uuid NOT NULL REFERENCES catalog_dataset_version(id) ON DELETE CASCADE,
   alias text NOT NULL,
   sort_order integer NOT NULL,
+  source_name text,
   name text NOT NULL,
   block_type text,
   description text,
@@ -33,6 +34,8 @@ CREATE TABLE IF NOT EXISTS catalog_data_block (
   membership_indicator_count bigint NOT NULL DEFAULT 0,
   PRIMARY KEY (dataset_version_id, alias)
 );
+
+ALTER TABLE catalog_data_block ADD COLUMN IF NOT EXISTS source_name text;
 
 CREATE TABLE IF NOT EXISTS catalog_taxonomy_node (
   dataset_version_id uuid NOT NULL REFERENCES catalog_dataset_version(id) ON DELETE CASCADE,
@@ -87,8 +90,8 @@ CREATE TABLE IF NOT EXISTS catalog_indicator (
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   search_vector tsvector GENERATED ALWAYS AS (
     setweight(to_tsvector('simple', coalesce(mnemonic, '')), 'A') ||
-    setweight(to_tsvector('russian', unaccent(coalesce(name, ''))), 'A') ||
-    setweight(to_tsvector('simple', unaccent(coalesce(geography_name, '') || ' ' || coalesce(source_code, ''))), 'B')
+    setweight(to_tsvector('russian', coalesce(name, '')), 'A') ||
+    setweight(to_tsvector('simple', coalesce(geography_name, '') || ' ' || coalesce(source_code, '')), 'B')
   ) STORED,
   PRIMARY KEY (dataset_version_id, series_id),
   UNIQUE (dataset_version_id, mnemonic)

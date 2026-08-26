@@ -26,12 +26,16 @@ check('same_name_variants', [...nameVariants.values()].some(variants => variants
 
 const report = {
   generatedAt: new Date().toISOString(),
-  status: checks.every(item => item.passed) ? 'PASS' : 'FAIL',
+  mode: 'demo',
+  status: checks.every(item => item.passed) ? 'PASS_DEMO' : 'FAIL',
+  controlIndicators: fixture.manifest.totals.indicators,
+  queryableIndicators: fixture.indicators.length,
+  fullDataReady: false,
   fixtureIndicators: fixture.indicators.length,
   checks,
 };
 await fs.mkdir(path.join(root, 'reports'), { recursive: true });
 await fs.writeFile(path.join(root, 'reports/catalog-validation.json'), JSON.stringify(report, null, 2));
-await fs.writeFile(path.join(root, 'reports/catalog-validation.md'), `# Catalog validation\n\nStatus: **${report.status}**\n\nFixture indicators: **${report.fixtureIndicators.toLocaleString('ru-RU')}**\n\n${checks.map(item => `- ${item.passed ? 'PASS' : 'FAIL'} — ${item.name}: \`${JSON.stringify(item.details)}\``).join('\n')}\n`);
+await fs.writeFile(path.join(root, 'reports/catalog-validation.md'), `# Catalog validation\n\nStatus: **${report.status}**\n\n- Mode: \`${report.mode}\`\n- Control indicators: **${report.controlIndicators.toLocaleString('ru-RU')}**\n- Queryable indicators: **${report.queryableIndicators.toLocaleString('ru-RU')}**\n- Full data ready: **${report.fullDataReady}**\n\n${checks.map(item => `- ${item.passed ? 'PASS' : 'FAIL'} — ${item.name}: \`${JSON.stringify(item.details)}\``).join('\n')}\n`);
 console.log(JSON.stringify(report, null, 2));
-if (report.status !== 'PASS') process.exitCode = 1;
+if (report.status !== 'PASS_DEMO') process.exitCode = 1;
