@@ -10,3 +10,4 @@ catalog/data/catalog-data.json
 catalog-reports/private/
 *.zip
 *.xlsx
+.env.local
