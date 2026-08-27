@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 
-test('shell exposes the legacy catalog and seven catalog variants', async () => {
+test('shell exposes the legacy catalog and eight catalog variants', async () => {
   const html = await fs.readFile(new URL('../datatracker-agent-v6.html', import.meta.url), 'utf8');
   const navigation = [...html.matchAll(/class="nav-item(?: active)?" data-view="([^"]+)"/g)].map(match => match[1]);
-  assert.deepEqual(navigation, ['home', 'catalog', 'catalog-1', 'catalog-2', 'catalog-3', 'catalog-4', 'catalog-5', 'catalog-6', 'catalog-7']);
-  for (const view of ['catalog-1', 'catalog-2', 'catalog-3', 'catalog-4', 'catalog-5', 'catalog-6', 'catalog-7', 'catalog-indicator']) {
+  assert.deepEqual(navigation, ['home', 'catalog', 'catalog-1', 'catalog-2', 'catalog-3', 'catalog-4', 'catalog-5', 'catalog-6', 'catalog-7', 'catalog-8']);
+  for (const view of ['catalog-1', 'catalog-2', 'catalog-3', 'catalog-4', 'catalog-5', 'catalog-6', 'catalog-7', 'catalog-8', 'catalog-indicator']) {
     assert.match(html, new RegExp(`id="catalog-mount-${view}"`));
   }
   assert.doesNotMatch(html, /id="catalog-mount-catalog"/);
@@ -17,7 +17,7 @@ test('new catalog module does not intercept or render the legacy catalog', async
   const source = await fs.readFile(new URL('../catalog/main.mjs', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /renderOverview/);
   assert.doesNotMatch(source, /\['home',\s*'catalog'/);
-  assert.match(source, /\['catalog-1', 'catalog-2', 'catalog-3', 'catalog-4', 'catalog-5', 'catalog-6', 'catalog-7'\]/);
+  assert.match(source, /\['catalog-1', 'catalog-2', 'catalog-3', 'catalog-4', 'catalog-5', 'catalog-6', 'catalog-7', 'catalog-8'\]/);
   assert.doesNotMatch(source, /3 уровня|4 уровня|catalog-direct-examples/);
   for (const label of ['Топики', 'Темы', 'Сабтемы', 'Сабтемы 2']) assert.match(source, new RegExp(label));
 });
@@ -43,6 +43,18 @@ test('catalog 5 follows the legacy database catalog presentation', async () => {
   assert.match(source, /data-c5-mode="taxonomy"/);
   assert.match(source, /data-c5-mode="attributes"/);
   assert.doesNotMatch(source, /compactBlockList/);
+});
+
+test('catalog 8 combines catalog 5 layout with catalog 6 aggregation', async () => {
+  const source = await fs.readFile(new URL('../catalog/main.mjs', import.meta.url), 'utf8');
+  assert.match(source, /async function renderCatalog8/);
+  assert.match(source, /catalog8BlockList/);
+  assert.match(source, /class="catalog5-layout catalog8-layout"/);
+  assert.match(source, /data-c8-mode="taxonomy"/);
+  assert.match(source, /data-c8-mode="attributes"/);
+  assert.match(source, /catalogApi\.groups\(params\)/);
+  assert.match(source, /Series агрегируются в индикаторы до пагинации/);
+  assert.match(source, /bindGroupCards\(resultRoot, view\)/);
 });
 
 test('catalog 4 combines sequential navigation with prefiltered search mode', async () => {

@@ -9297,6 +9297,7 @@
       <div class="nav-item" data-view="catalog-5"><span class="ic">▤</span> Каталог 5</div>
       <div class="nav-item" data-view="catalog-6"><span class="ic">≋</span> Каталог 6</div>
       <div class="nav-item" data-view="catalog-7"><span class="ic">⊞</span> Каталог 7</div>
+      <div class="nav-item" data-view="catalog-8"><span class="ic">◈</span> Каталог 8</div>
       <div id="pinned-workspaces-list" hidden></div>
       <div id="fav-list" hidden></div>
 
@@ -9631,6 +9632,7 @@
         <section class="view" id="view-catalog-5"><div class="catalog-experiment" id="catalog-mount-catalog-5"></div></section>
         <section class="view" id="view-catalog-6"><div class="catalog-experiment" id="catalog-mount-catalog-6"></div></section>
         <section class="view" id="view-catalog-7"><div class="catalog-experiment" id="catalog-mount-catalog-7"></div></section>
+        <section class="view" id="view-catalog-8"><div class="catalog-experiment" id="catalog-mount-catalog-8"></div></section>
         <section class="view" id="view-catalog-indicator"><div class="catalog-experiment" id="catalog-mount-catalog-indicator"></div></section>
 
 
@@ -12489,6 +12491,7 @@
       'catalog-5': { label: 'Каталог внутри блока данных', sugg: [] },
       'catalog-6': { label: 'Группы показателей', sugg: [] },
       'catalog-7': { label: 'Рабочая область индикаторов', sugg: [] },
+      'catalog-8': { label: 'Агрегированный каталог внутри блока', sugg: [] },
       'catalog-indicator': { label: 'Карточка индикатора', sugg: [] },
       indicator: { label: 'Индикатор', sugg: ['Построй ARIMA-прогноз', 'Корреляция с ликвидностью', 'Чем отличается от прогноза ФК?'] },
       workspace: { label: 'Рабочая область', sugg: ['Сравни динамику графиков', 'Собери выводы', 'Добавь прогноз ОФЗ на 6 мес'] },
@@ -12511,6 +12514,7 @@
   'catalog-5': 'Каталог 5',
   'catalog-6': 'Каталог 6',
   'catalog-7': 'Каталог 7',
+  'catalog-8': 'Каталог 8',
   'catalog-indicator': 'Каталог / Индикатор',
   indicator: 'Индикатор',
   workspace: 'Рабочие области',
@@ -14224,7 +14228,7 @@
       const appEl = document.querySelector('.app');
       appEl.classList.remove('mobile-sidebar-open', 'mobile-copilot-open');
       if (window.matchMedia('(max-width: 900px)').matches) applyShellPanelState(readShellPanelState());
-      if (view === 'chat' || view === 'catalog-1' || view === 'catalog-2' || view === 'catalog-3' || view === 'catalog-4' || view === 'catalog-5' || view === 'catalog-6' || view === 'catalog-7' || view === 'catalog-indicator') {
+      if (view === 'chat' || view === 'catalog-1' || view === 'catalog-2' || view === 'catalog-3' || view === 'catalog-4' || view === 'catalog-5' || view === 'catalog-6' || view === 'catalog-7' || view === 'catalog-8' || view === 'catalog-indicator') {
         appEl.classList.add('hide-copilot');
       } else {
         appEl.classList.remove('hide-copilot');
@@ -14238,7 +14242,7 @@
 
       if (view === 'home') { renderHome(); }
       if (view === 'catalog') { renderTree(document.getElementById('cat-input').value); updateSelbar(); }
-      if ((view === 'catalog-1' || view === 'catalog-2' || view === 'catalog-3' || view === 'catalog-4' || view === 'catalog-5' || view === 'catalog-6' || view === 'catalog-7' || view === 'catalog-indicator') && window.catalogApp) { window.catalogApp.render(view); }
+      if ((view === 'catalog-1' || view === 'catalog-2' || view === 'catalog-3' || view === 'catalog-4' || view === 'catalog-5' || view === 'catalog-6' || view === 'catalog-7' || view === 'catalog-8' || view === 'catalog-indicator') && window.catalogApp) { window.catalogApp.render(view); }
       if (view === 'indicator') { renderIndChart(); }
       if (view === 'workspace') {/* render ws detail is handled by openWorkspaceDetail */ }
       if (view === 'workspaces') { renderWorkspacesList(); }
