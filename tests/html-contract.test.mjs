@@ -33,6 +33,18 @@ test('catalogs 5, 6 and 7 expose their required contracts', async () => {
   assert.match(source, /CATALOG7_LAYOUT_KEY/);
 });
 
+test('catalog 5 follows the legacy database catalog presentation', async () => {
+  const source = await fs.readFile(new URL('../catalog/main.mjs', import.meta.url), 'utf8');
+  assert.match(source, /catalog5BlockList/);
+  assert.match(source, /class="catalog-source/);
+  assert.match(source, /class="catalog-results" id="catalog5-results"/);
+  assert.match(source, /class="catalog-group"/);
+  assert.match(source, /class="catalog-result-row"/);
+  assert.match(source, /data-c5-mode="taxonomy"/);
+  assert.match(source, /data-c5-mode="attributes"/);
+  assert.doesNotMatch(source, /compactBlockList/);
+});
+
 test('catalog 4 combines sequential navigation with prefiltered search mode', async () => {
   const source = await fs.readFile(new URL('../catalog/main.mjs', import.meta.url), 'utf8');
   assert.match(source, /data-jump-search>Перейти к поиску/);

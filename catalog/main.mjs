@@ -15,7 +15,6 @@ const VIEW_TITLES = {
 const LEVELS = ['topic', 'theme', 'subtheme', 'subtheme2'];
 const GROUP_LEVELS = ['topic', 'theme', 'subtheme'];
 const LEVEL_LABELS = { topic: 'Топики', theme: 'Темы', subtheme: 'Сабтемы', subtheme2: 'Сабтемы 2' };
-const CATALOG5_TAXONOMY_LABELS = { topic: 'Тема', theme: 'Тематика', subtheme: 'Подтема', subtheme2: 'Конечная категория' };
 const FACET_LABELS = {
   topic: 'Топики', theme: 'Темы', subtheme: 'Сабтемы', subtheme2: 'Сабтемы 2',
   source: 'Источники', frequency: 'Частоты', unit: 'Единицы измерения', geographyScope: 'Типы географии', geography: 'Географии',
@@ -102,7 +101,7 @@ function navigate(view, state = {}) {
 }
 
 function bindResults(root, view) {
-  root.querySelectorAll('.catalog-card').forEach(element => {
+  root.querySelectorAll('.catalog-card, .catalog-result-row[data-series-id]').forEach(element => {
     const open = () => navigate('catalog-indicator', { id: element.dataset.seriesId, from: element.dataset.fromView, returnState: element.dataset.returnState });
     element.addEventListener('click', event => { if (!event.target.closest('[data-select-series]')) open(); });
     element.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') open(); });
@@ -329,16 +328,42 @@ function clearFilterPatch() {
   return Object.fromEntries([...LEVELS, ...ATTRIBUTE_DIMENSIONS, 'cursor'].map(key => [key, null]));
 }
 
-function compactBlockList(view, state) {
-  return `<aside class="catalog-panel sticky catalog5-blocks"><div class="catalog-panel-title">Блоки данных</div><div class="catalog5-block-list">${blocks.map(block => `<button data-c5-block="${esc(block.alias)}" class="${state.block === block.alias ? 'active' : ''}"><span>${esc(block.name)}</span><em>${fmt(block.totalSeries ?? block.availableSeries)}</em></button>`).join('')}</div></aside>`;
+function catalog5BlockList(state) {
+  return `<aside class="catalog-sidebar catalog5-blocks"><div class="catalog-filter-title">Блоки данных</div><div class="catalog5-block-list">${blocks.map((block, index) => `<button type="button" data-c5-block="${esc(block.alias)}" class="catalog-source ${state.block === block.alias ? 'active' : ''}"><span class="catalog-source-icon">${String(index + 1).padStart(2, '0')}</span><span>${esc(block.name)}<small>${fmt(block.totalSeries ?? block.availableSeries)} показателей</small></span><span>›</span></button>`).join('')}</div></aside>`;
+}
+
+function catalog5ResultRow(indicator, view, state) {
+  const taxonomy = indicator.taxonomy4 || {};
+  const path = ['topic', 'theme', 'subtheme', 'subtheme2'].map(level => taxonomy[level]?.name).filter(Boolean);
+  const meta = [indicator.mnemonic, path.join(' › ')].filter(Boolean).join(' · ');
+  return `<article class="catalog-result-row" tabindex="0" data-series-id="${esc(indicator.seriesId)}" data-from-view="${esc(view)}" data-return-state="${esc(JSON.stringify(state))}"><span class="catalog5-row-open" aria-hidden="true">›</span><div><div class="title">${esc(indicator.name)}</div><div class="meta">${esc(meta)}</div></div><span class="source-pill">${esc(indicator.source?.label || 'Источник')}</span></article>`;
+}
+
+function catalog5Results(response, view, state) {
+  if (!response.items?.length) return '<div class="catalog-empty"><div><b>Ничего не найдено</b>Измените запрос или снимите часть фильтров.</div></div>';
+  const groups = new Map();
+  response.items.forEach(indicator => {
+    const topic = indicator.taxonomy4?.topic?.name || 'Без топика';
+    const theme = indicator.taxonomy4?.theme?.name || 'Без темы';
+    const key = `${topic}||${theme}`;
+    if (!groups.has(key)) groups.set(key, { topic, theme, items: [] });
+    groups.get(key).items.push(indicator);
+  });
+  const body = [...groups.values()].map((group, index) => `<details class="catalog-group" ${state.q || index < 2 ? 'open' : ''}><summary><span>${esc(group.topic)} · ${esc(group.theme)}</span><span class="catalog-group-count">${fmt(group.items.length)}</span></summary>${group.items.map(indicator => catalog5ResultRow(indicator, view, state)).join('')}</details>`).join('');
+  return `${body}${response.nextCursor ? `<button class="catalog-loadmore" data-next-cursor="${esc(response.nextCursor)}">Следующая страница</button>` : ''}`;
 }
 
 async function renderCatalog5() {
   const view = 'catalog-5';
   const root = mount(view);
   const state = currentState(view);
+  if (!state.block && blocks[0]) {
+    setState(view, { block: blocks[0].alias }, { replace: true });
+    return;
+  }
   const filterMode = state.filterMode === 'attributes' ? 'attributes' : 'taxonomy';
-  root.innerHTML = `${header(view)}${searchBox(state.q, 'Поиск внутри выбранного блока…', 'catalog5-query')}<div class="catalog5-layout">${compactBlockList(view, state)}<main id="catalog5-results"><div class="catalog-empty"><div><b>${state.block ? 'Подготавливаю выборку…' : 'Выберите блок данных'}</b>${state.block ? 'Загружаю индикаторы и доступные фильтры.' : 'Результаты появятся сразу после выбора одного блока.'}</div></div></main><aside class="catalog-panel sticky" id="catalog5-filter"><div class="catalog5-segment"><button data-c5-mode="taxonomy" class="${filterMode === 'taxonomy' ? 'active' : ''}">Таксономия</button><button data-c5-mode="attributes" class="${filterMode === 'attributes' ? 'active' : ''}">Атрибуты</button></div><div id="catalog5-filter-content" class="catalog-empty"><div><b>Фильтры</b>Сначала выберите блок данных.</div></div></aside></div>`;
+  const activeBlock = blocks.find(block => block.alias === state.block);
+  root.innerHTML = `<div class="catalog5-head"><h1 class="h1">Каталог 5</h1><p class="h1-sub">Поиск по блокам данных, таксономии и атрибутам показателей</p></div><div class="cat-top catalog5-search"><div class="cat-search"><span class="sp">⌕</span><input id="catalog5-query" value="${esc(state.q || '')}" placeholder="Поиск внутри выбранного блока…" autocomplete="off"><span class="cnt" id="catalog5-count">${fmt(activeBlock?.totalSeries ?? activeBlock?.availableSeries)} показателей</span></div></div><div class="catalog5-layout">${catalog5BlockList(state)}<main class="catalog-results" id="catalog5-results"><div class="catalog-results-head"><b>${esc(activeBlock?.name || 'Показатели')}</b><span class="count">загрузка…</span></div><div class="catalog-empty"><div><b>Подготавливаю выборку…</b>Загружаю индикаторы и доступные фильтры.</div></div></main><aside class="catalog-sidebar catalog5-filter-sidebar" id="catalog5-filter"><div class="catalog5-segment"><button type="button" data-c5-mode="taxonomy" class="${filterMode === 'taxonomy' ? 'active' : ''}">Таксономия</button><button type="button" data-c5-mode="attributes" class="${filterMode === 'attributes' ? 'active' : ''}">Атрибуты</button></div><div id="catalog5-filter-content"><div class="catalog-empty"><div><b>Фильтры</b>Загружаю доступные значения.</div></div></div></aside></div>`;
   const input = root.querySelector('#catalog5-query');
   input.addEventListener('keydown', event => { if (event.key === 'Enter') setState(view, { q: input.value.trim(), cursor: null }); });
   root.querySelectorAll('[data-c5-mode]').forEach(button => button.addEventListener('click', () => setState(view, { filterMode: button.dataset.c5Mode }, { replace: true })));
@@ -352,13 +377,13 @@ async function renderCatalog5() {
   ]);
   const facets = facetResponse.facets || {};
   const filterRoot = root.querySelector('#catalog5-filter-content');
-  filterRoot.className = '';
   filterRoot.innerHTML = filterMode === 'taxonomy'
-    ? `<div class="catalog-panel-title">Тематический путь</div>${facetGroups(view, LEVELS.filter(level => facets[level]?.length), facets, state, CATALOG5_TAXONOMY_LABELS)}`
-    : `<div class="catalog-panel-title">Атрибуты ряда</div>${facetGroups(view, ATTRIBUTE_DIMENSIONS, facets, state)}`;
+    ? `<div class="catalog-filter-title">Таксономия</div>${facetGroups(view, LEVELS.filter(level => facets[level]?.length), facets, state)}`
+    : `<div class="catalog-filter-title">Атрибуты</div>${facetGroups(view, ATTRIBUTE_DIMENSIONS, facets, state)}`;
   bindFacetPanels(filterRoot, view, { dependentTaxonomy: true });
   const resultRoot = root.querySelector('#catalog5-results');
-  resultRoot.innerHTML = cards(resultResponse, view, state);
+  resultRoot.innerHTML = `<div class="catalog-results-head"><b>${esc(activeBlock?.name || 'Показатели')}</b><span class="count">${fmt(resultResponse.total)} найдено</span></div>${catalog5Results(resultResponse, view, state)}`;
+  root.querySelector('#catalog5-count').textContent = `${fmt(resultResponse.total)} показателей`;
   bindResults(resultRoot, view);
 }
 
