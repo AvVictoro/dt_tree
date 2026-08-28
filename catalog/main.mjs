@@ -12,6 +12,7 @@ const VIEW_TITLES = {
   'catalog-6': ['Каталог 6', 'Трёхуровневая навигация по агрегированным группам показателей'],
   'catalog-7': ['Каталог 7', 'Выбор индикаторов и рабочая область для сопоставления данных'],
   'catalog-8': ['Каталог 8', 'Выборка агрегированных индикаторов внутри блока данных'],
+  'catalog-9': ['Каталог 9', 'Последовательный выбор раздела с агрегированной выдачей индикаторов'],
 };
 const LEVELS = ['topic', 'theme', 'subtheme', 'subtheme2'];
 const GROUP_LEVELS = ['topic', 'theme', 'subtheme'];
@@ -28,6 +29,8 @@ const catalog6Expanded = new Set();
 const catalog6Panels = new Map();
 const catalog8Expanded = new Set();
 const catalog8Panels = new Map();
+const catalog9Expanded = new Set();
+const catalog9Panels = new Map();
 const catalog7Selection = new Map();
 const CATALOG7_LAYOUT_KEY = 'dt.catalog7.layout.v1';
 const DEFAULT_CATALOG7_LAYOUT = { showTaxonomy: true, showAttributes: true, showResults: true, showAnalysis: false, analysisWidth: 430, tab: 'list' };
@@ -357,6 +360,10 @@ function catalog8BlockList(state) {
   return catalogBlockList(state, 'c8', 'series');
 }
 
+function catalog9BlockList(state) {
+  return catalogBlockList(state, 'c9', 'series');
+}
+
 function catalog5ResultRow(indicator, view, state) {
   const taxonomy = indicator.taxonomy4 || {};
   const path = ['topic', 'theme', 'subtheme', 'subtheme2'].map(level => taxonomy[level]?.name).filter(Boolean);
@@ -437,14 +444,14 @@ function groupBreadcrumb(state) {
 
 function groupSummary(group, view, state) {
   const expanded = groupViewContext(view).expanded.has(group.groupId);
-  const seriesLabel = view === 'catalog-8' ? 'series' : ruPlural(group.seriesCount, 'ряд', 'ряда', 'рядов');
+  const seriesLabel = view === 'catalog-8' || view === 'catalog-9' ? 'series' : ruPlural(group.seriesCount, 'ряд', 'ряда', 'рядов');
   return `<article class="catalog6-group" data-group-id="${esc(group.groupId)}"><button class="catalog6-group-head" data-toggle-group aria-expanded="${expanded}"><span><b>${esc(group.name)}</b><code>${esc(group.indicatorCode)}</code><small>${esc(group.taxonomy?.path || [group.taxonomy?.topic?.name, group.taxonomy?.theme?.name, group.taxonomy?.subtheme?.name].filter(Boolean).join(' › '))}</small></span><span><em>${fmt(group.seriesCount)} ${seriesLabel}</em><i>${expanded ? '−' : '+'}</i></span></button><div class="catalog6-group-body" ${expanded ? '' : 'hidden'}>${expanded ? `<div class="catalog-empty">Загрузка ${seriesLabel}…</div>` : ''}</div></article>`;
 }
 
 function groupViewContext(view) {
-  return view === 'catalog-8'
-    ? { expanded: catalog8Expanded, panels: catalog8Panels }
-    : { expanded: catalog6Expanded, panels: catalog6Panels };
+  if (view === 'catalog-9') return { expanded: catalog9Expanded, panels: catalog9Panels };
+  if (view === 'catalog-8') return { expanded: catalog8Expanded, panels: catalog8Panels };
+  return { expanded: catalog6Expanded, panels: catalog6Panels };
 }
 
 function groupSeriesParams(panel, cursor = null) {
@@ -458,10 +465,10 @@ function groupFacetSelect(key, items, selected) {
 
 function renderGroupPanel(groupId, body, panel, view) {
   const items = panel.items || [];
-  const isCatalog8 = view === 'catalog-8';
-  const memberLabel = isCatalog8 ? 'Series' : 'Рядов';
-  const emptyMemberLabel = isCatalog8 ? 'Series' : 'Ряды';
-  const groupLabel = isCatalog8 ? 'индикатора' : 'группы';
+  const isAggregatedCatalog = view === 'catalog-8' || view === 'catalog-9';
+  const memberLabel = isAggregatedCatalog ? 'Series' : 'Рядов';
+  const emptyMemberLabel = isAggregatedCatalog ? 'Series' : 'Ряды';
+  const groupLabel = isAggregatedCatalog ? 'индикатора' : 'группы';
   body.innerHTML = `<div class="catalog6-series-tools"><label class="catalog-select"><span>Поиск внутри ${groupLabel}</span><input data-group-series-query value="${esc(panel.q || '')}" placeholder="Мнемоника, география или название"></label>${ATTRIBUTE_DIMENSIONS.map(key => groupFacetSelect(key, panel.facets?.[key], panel.filters?.[key])).join('')}</div><div class="catalog6-series-result">${items.length ? `<div class="catalog-result-head"><span>${memberLabel}: ${fmt(panel.total)}</span><span>показано ${fmt(items.length)}</span></div><div class="catalog-result-list">${items.map(item => card(item, view, currentState(view))).join('')}</div>${panel.nextCursor ? '<button class="catalog-loadmore" data-group-more>Показать ещё</button>' : ''}` : `<div class="catalog-empty"><div><b>${emptyMemberLabel} не найдены</b>Измените фильтры внутри ${groupLabel}.</div></div>`}</div>`;
   const query = body.querySelector('[data-group-series-query]');
   query?.addEventListener('keydown', event => {
@@ -480,10 +487,11 @@ function renderGroupPanel(groupId, body, panel, view) {
 
 async function loadGroupPanel(groupId, body, { view = 'catalog-6', append = false, cursor = null } = {}) {
   const context = groupViewContext(view);
+  const isAggregatedCatalog = view === 'catalog-8' || view === 'catalog-9';
   const panel = context.panels.get(groupId) || { q: '', filters: {}, items: [], cursor: null, facets: null };
   context.panels.set(groupId, panel);
   body.hidden = false;
-  body.innerHTML = `<div class="catalog-empty">${view === 'catalog-8' ? 'Загрузка series индикатора…' : 'Загрузка рядов группы…'}</div>`;
+  body.innerHTML = `<div class="catalog-empty">${isAggregatedCatalog ? 'Загрузка series индикатора…' : 'Загрузка рядов группы…'}</div>`;
   try {
     const [series, facetResponse] = await Promise.all([
       catalogApi.groupSeries(groupId, groupSeriesParams(panel, cursor)),
@@ -495,7 +503,7 @@ async function loadGroupPanel(groupId, body, { view = 'catalog-6', append = fals
     panel.facets = facetResponse.facets || series.facets || {};
     renderGroupPanel(groupId, body, panel, view);
   } catch (error) {
-    body.innerHTML = `<div class="catalog-error"><b>Не удалось загрузить ${view === 'catalog-8' ? 'series' : 'ряды'}.</b> ${esc(error.message)} <button data-group-retry>Повторить</button></div>`;
+    body.innerHTML = `<div class="catalog-error"><b>Не удалось загрузить ${isAggregatedCatalog ? 'series' : 'ряды'}.</b> ${esc(error.message)} <button data-group-retry>Повторить</button></div>`;
     body.querySelector('[data-group-retry]')?.addEventListener('click', () => loadGroupPanel(groupId, body, { view }));
   }
 }
@@ -593,6 +601,114 @@ async function renderCatalog8() {
   resultRoot.innerHTML = `<div class="catalog-results-head"><b>${esc(activeBlock?.name || 'Индикаторы')}</b><span class="count">${indicatorCount(groupResponse.total)}</span></div><div class="catalog8-aggregation-note">Series агрегируются в индикаторы до пагинации. Раскройте индикатор, чтобы увидеть входящие series.</div>${groupResponse.items?.length ? groupResponse.items.map(group => groupSummary(group, view, state)).join('') : '<div class="catalog-empty"><div><b>Индикаторы не найдены</b>Измените блок, фильтры или поисковый запрос.</div></div>'}${groupResponse.nextCursor ? `<button class="catalog-loadmore" data-c8-next-cursor="${esc(groupResponse.nextCursor)}">Следующая страница индикаторов</button>` : ''}`;
   root.querySelector('#catalog8-count').textContent = indicatorCount(groupResponse.total);
   resultRoot.querySelector('[data-c8-next-cursor]')?.addEventListener('click', event => setState(view, { cursor: event.currentTarget.dataset.c8NextCursor }));
+  bindGroupCards(resultRoot, view);
+}
+
+function catalog9LeftLevel(state) {
+  if (!state.block) return 'block';
+  if (!state.topic) return 'topic';
+  if (!state.theme) return 'theme';
+  return 'subtheme';
+}
+
+async function ensureCatalog9PathNames(state) {
+  for (const level of GROUP_LEVELS) {
+    if (!state[level]) break;
+    if (!nodeCache.has(`3:${state[level]}`)) await loadGroupLevel(level, state);
+  }
+}
+
+function catalog9Breadcrumb(state) {
+  const parts = [state.block
+    ? '<button type="button" data-c9-back="block">Блоки данных</button>'
+    : '<span class="current">Блоки данных</span>'];
+  if (state.block) {
+    const blockName = blocks.find(block => block.alias === state.block)?.name || state.block;
+    parts.push(`<i>›</i>${state.topic ? `<button type="button" data-c9-back="topic">${esc(blockName)}</button>` : `<span class="current">${esc(blockName)}</span>`}`);
+  }
+  if (state.topic) {
+    const topicName = nodeCache.get(`3:${state.topic}`)?.name || state.topic;
+    parts.push(`<i>›</i>${state.theme ? `<button type="button" data-c9-back="theme">${esc(topicName)}</button>` : `<span class="current">${esc(topicName)}</span>`}`);
+  }
+  if (state.theme) {
+    const themeName = nodeCache.get(`3:${state.theme}`)?.name || state.theme;
+    parts.push(`<i>›</i>${state.subtheme ? `<button type="button" data-c9-back="subtheme">${esc(themeName)}</button>` : `<span class="current">${esc(themeName)}</span>`}`);
+  }
+  if (state.subtheme) {
+    const subthemeName = nodeCache.get(`3:${state.subtheme}`)?.name || state.subtheme;
+    parts.push(`<i>›</i><span class="current">${esc(subthemeName)}</span>`);
+  }
+  return `<nav class="catalog9-breadcrumb" aria-label="Путь по каталогу">${parts.join('')}</nav>`;
+}
+
+function catalog9HierarchyList(level, items, state) {
+  return `<aside class="catalog-sidebar catalog5-blocks"><div class="catalog-filter-title">${LEVEL_LABELS[level]}</div><div class="catalog5-block-list">${items.map((item, index) => `<button type="button" data-c9-level="${level}" data-c9-alias="${esc(item.alias)}" class="catalog-source ${state[level] === item.alias ? 'active' : ''}"><span class="catalog-source-icon">${String(index + 1).padStart(2, '0')}</span><span>${esc(item.name)}<small>${fmt(item.count)} series</small></span><span>›</span></button>`).join('') || '<div class="catalog-empty"><div><b>Нет доступных разделов</b>Для выбранного пути следующий уровень не найден.</div></div>'}</div></aside>`;
+}
+
+function resetCatalog9Groups() {
+  catalog9Expanded.clear();
+  catalog9Panels.clear();
+}
+
+function catalog9BackPatch(target) {
+  if (target === 'block') return { ...clearFilterPatch(), block: null };
+  const index = GROUP_LEVELS.indexOf(target);
+  const patch = { cursor: null };
+  if (index >= 0) GROUP_LEVELS.slice(index).forEach(level => { patch[level] = null; });
+  return patch;
+}
+
+async function renderCatalog9() {
+  const view = 'catalog-9';
+  const root = mount(view);
+  const state = currentState(view);
+  const activeBlock = blocks.find(block => block.alias === state.block);
+  if (state.block) await ensureCatalog9PathNames(state);
+  const leftLevel = catalog9LeftLevel(state);
+  const leftPlaceholder = leftLevel === 'block'
+    ? catalog9BlockList(state)
+    : `<aside class="catalog-sidebar catalog5-blocks"><div class="catalog-filter-title">${LEVEL_LABELS[leftLevel]}</div><div class="catalog-empty"><div><b>Загрузка разделов…</b>Формирую следующий уровень выбранного пути.</div></div></aside>`;
+  const resultPlaceholder = state.block
+    ? '<div class="catalog-results-head"><b>Индикаторы</b><span class="count">агрегация…</span></div><div class="catalog-empty"><div><b>Агрегирую series…</b>Формирую индикаторы для выбранного раздела.</div></div>'
+    : '<div class="catalog-empty catalog9-start"><div><b>Выберите блок данных</b>После выбора блока здесь появятся агрегированные индикаторы.</div></div>';
+  root.innerHTML = `<div class="catalog5-head"><h1 class="h1">Каталог 9</h1><p class="h1-sub">Последовательный выбор «Блоки данных → Топики → Темы → Сабтемы»</p></div><div class="cat-top catalog5-search"><div class="cat-search"><span class="sp">⌕</span><input id="catalog9-query" value="${esc(state.q || '')}" placeholder="Поиск по индикаторам и входящим series…" autocomplete="off"><span class="cnt" id="catalog9-count">${state.block ? 'агрегация…' : 'выберите блок'}</span></div></div>${catalog9Breadcrumb(state)}<div class="catalog5-layout catalog9-layout"><div id="catalog9-navigation">${leftPlaceholder}</div><main class="catalog-results" id="catalog9-results">${resultPlaceholder}</main><aside class="catalog-sidebar catalog5-filter-sidebar" id="catalog9-filter"><div class="catalog-filter-title">Атрибуты</div><div id="catalog9-filter-content">${state.block ? '<div class="catalog-empty"><div><b>Загрузка атрибутов…</b>Подбираю доступные значения.</div></div>' : '<div class="catalog-empty"><div><b>Выберите блок данных</b>Фильтры станут доступны после выбора блока.</div></div>'}</div></aside></div>`;
+  const input = root.querySelector('#catalog9-query');
+  input.addEventListener('keydown', event => { if (event.key === 'Enter') setState(view, { q: input.value.trim(), cursor: null }); });
+  root.querySelectorAll('[data-c9-back]').forEach(button => button.addEventListener('click', () => {
+    resetCatalog9Groups();
+    setState(view, catalog9BackPatch(button.dataset.c9Back));
+  }));
+  root.querySelectorAll('[data-c9-block]').forEach(button => button.addEventListener('click', () => {
+    resetCatalog9Groups();
+    setState(view, { ...clearFilterPatch(), block: button.dataset.c9Block });
+  }));
+  if (!state.block) return;
+
+  const params = { ...apiParams(state), taxonomy: 3 };
+  const [leftItems, facetResponse, groupResponse] = await Promise.all([
+    loadGroupLevel(leftLevel, state),
+    catalogApi.facets(params),
+    catalogApi.groups(params),
+  ]);
+  const navigationRoot = root.querySelector('#catalog9-navigation');
+  navigationRoot.innerHTML = catalog9HierarchyList(leftLevel, leftItems, state);
+  navigationRoot.querySelectorAll('[data-c9-level]').forEach(button => button.addEventListener('click', () => {
+    const selectedLevel = button.dataset.c9Level;
+    const patch = { [selectedLevel]: button.dataset.c9Alias, cursor: null };
+    GROUP_LEVELS.slice(GROUP_LEVELS.indexOf(selectedLevel) + 1).forEach(level => { patch[level] = null; });
+    resetCatalog9Groups();
+    setState(view, patch);
+  }));
+
+  const facets = facetResponse.facets || {};
+  const filterRoot = root.querySelector('#catalog9-filter-content');
+  filterRoot.innerHTML = facetGroups(view, ATTRIBUTE_DIMENSIONS, facets, state);
+  bindFacetPanels(filterRoot, view);
+
+  const resultRoot = root.querySelector('#catalog9-results');
+  resultRoot.innerHTML = `<div class="catalog-results-head"><b>${esc(activeBlock?.name || 'Индикаторы')}</b><span class="count">${indicatorCount(groupResponse.total)}</span></div><div class="catalog8-aggregation-note">Series агрегируются в индикаторы до пагинации. Выдача соответствует выбранному уровню пути.</div>${groupResponse.items?.length ? groupResponse.items.map(group => groupSummary(group, view, state)).join('') : '<div class="catalog-empty"><div><b>Индикаторы не найдены</b>Измените раздел, атрибуты или поисковый запрос.</div></div>'}${groupResponse.nextCursor ? `<button class="catalog-loadmore" data-c9-next-cursor="${esc(groupResponse.nextCursor)}">Следующая страница индикаторов</button>` : ''}`;
+  root.querySelector('#catalog9-count').textContent = indicatorCount(groupResponse.total);
+  resultRoot.querySelector('[data-c9-next-cursor]')?.addEventListener('click', event => setState(view, { cursor: event.currentTarget.dataset.c9NextCursor }));
   bindGroupCards(resultRoot, view);
 }
 
@@ -757,6 +873,7 @@ async function render(view) {
     if (view === 'catalog-6') await renderCatalog6();
     if (view === 'catalog-7') await renderCatalog7();
     if (view === 'catalog-8') await renderCatalog8();
+    if (view === 'catalog-9') await renderCatalog9();
     if (view === 'catalog-indicator') await renderIndicator();
   } catch (error) {
     root.innerHTML = `<div class="catalog-error"><b>Каталог не загрузился.</b> ${esc(error.message)}</div>`;
@@ -773,7 +890,7 @@ async function activateRoute() {
 
 document.addEventListener('click', event => {
   const item = event.target.closest('.nav-item[data-view]');
-  if (!item || !['catalog-1', 'catalog-2', 'catalog-3', 'catalog-4', 'catalog-5', 'catalog-6', 'catalog-7', 'catalog-8'].includes(item.dataset.view)) return;
+  if (!item || !['catalog-1', 'catalog-2', 'catalog-3', 'catalog-4', 'catalog-5', 'catalog-6', 'catalog-7', 'catalog-8', 'catalog-9'].includes(item.dataset.view)) return;
   event.preventDefault();
   event.stopImmediatePropagation();
   navigate(item.dataset.view, currentState(item.dataset.view));

@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 
-test('shell exposes the legacy catalog and eight catalog variants', async () => {
+test('shell exposes the legacy catalog and nine catalog variants', async () => {
   const html = await fs.readFile(new URL('../datatracker-agent-v6.html', import.meta.url), 'utf8');
   const navigation = [...html.matchAll(/class="nav-item(?: active)?" data-view="([^"]+)"/g)].map(match => match[1]);
-  assert.deepEqual(navigation, ['home', 'catalog', 'catalog-1', 'catalog-2', 'catalog-3', 'catalog-4', 'catalog-5', 'catalog-6', 'catalog-7', 'catalog-8']);
-  for (const view of ['catalog-1', 'catalog-2', 'catalog-3', 'catalog-4', 'catalog-5', 'catalog-6', 'catalog-7', 'catalog-8', 'catalog-indicator']) {
+  assert.deepEqual(navigation, ['home', 'catalog', 'catalog-1', 'catalog-2', 'catalog-3', 'catalog-4', 'catalog-5', 'catalog-6', 'catalog-7', 'catalog-8', 'catalog-9']);
+  for (const view of ['catalog-1', 'catalog-2', 'catalog-3', 'catalog-4', 'catalog-5', 'catalog-6', 'catalog-7', 'catalog-8', 'catalog-9', 'catalog-indicator']) {
     assert.match(html, new RegExp(`id="catalog-mount-${view}"`));
   }
   assert.doesNotMatch(html, /id="catalog-mount-catalog"/);
@@ -17,7 +17,7 @@ test('new catalog module does not intercept or render the legacy catalog', async
   const source = await fs.readFile(new URL('../catalog/main.mjs', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /renderOverview/);
   assert.doesNotMatch(source, /\['home',\s*'catalog'/);
-  assert.match(source, /\['catalog-1', 'catalog-2', 'catalog-3', 'catalog-4', 'catalog-5', 'catalog-6', 'catalog-7', 'catalog-8'\]/);
+  assert.match(source, /\['catalog-1', 'catalog-2', 'catalog-3', 'catalog-4', 'catalog-5', 'catalog-6', 'catalog-7', 'catalog-8', 'catalog-9'\]/);
   assert.doesNotMatch(source, /3 уровня|4 уровня|catalog-direct-examples/);
   for (const label of ['Топики', 'Темы', 'Сабтемы', 'Сабтемы 2']) assert.match(source, new RegExp(label));
 });
@@ -54,6 +54,20 @@ test('catalog 8 combines catalog 5 layout with catalog 6 aggregation', async () 
   assert.match(source, /data-c8-mode="attributes"/);
   assert.match(source, /catalogApi\.groups\(params\)/);
   assert.match(source, /Series агрегируются в индикаторы до пагинации/);
+  assert.match(source, /bindGroupCards\(resultRoot, view\)/);
+});
+
+test('catalog 9 drills down in the left column and keeps only attribute filters', async () => {
+  const source = await fs.readFile(new URL('../catalog/main.mjs', import.meta.url), 'utf8');
+  assert.match(source, /async function renderCatalog9/);
+  assert.match(source, /function catalog9Breadcrumb/);
+  assert.match(source, /function catalog9HierarchyList/);
+  assert.match(source, /catalog9BlockList/);
+  assert.match(source, /Выберите блок данных/);
+  assert.match(source, /Последовательный выбор «Блоки данных → Топики → Темы → Сабтемы»/);
+  assert.match(source, /facetGroups\(view, ATTRIBUTE_DIMENSIONS, facets, state\)/);
+  assert.doesNotMatch(source, /data-c9-mode=/);
+  assert.match(source, /catalogApi\.groups\(params\)/);
   assert.match(source, /bindGroupCards\(resultRoot, view\)/);
 });
 
