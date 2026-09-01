@@ -13,6 +13,7 @@ const VIEW_TITLES = {
   'catalog-7': ['Каталог 7', 'Выбор индикаторов и рабочая область для сопоставления данных'],
   'catalog-8': ['Каталог 8', 'Выборка агрегированных индикаторов внутри блока данных'],
   'catalog-9': ['Каталог 9', 'Последовательный выбор раздела с агрегированной выдачей индикаторов'],
+  'catalog-10': ['Каталог 10', 'Компактная выдача, часто используемые индикаторы и быстрый поиск'],
 };
 const LEVELS = ['topic', 'theme', 'subtheme', 'subtheme2'];
 const GROUP_LEVELS = ['topic', 'theme', 'subtheme'];
@@ -31,6 +32,8 @@ const catalog8Expanded = new Set();
 const catalog8Panels = new Map();
 const catalog9Expanded = new Set();
 const catalog9Panels = new Map();
+const catalog10Expanded = new Set();
+const catalog10Panels = new Map();
 const catalog7Selection = new Map();
 const CATALOG7_LAYOUT_KEY = 'dt.catalog7.layout.v1';
 const DEFAULT_CATALOG7_LAYOUT = { showTaxonomy: true, showAttributes: true, showResults: true, showAnalysis: false, analysisWidth: 430, tab: 'list' };
@@ -444,11 +447,12 @@ function groupBreadcrumb(state) {
 
 function groupSummary(group, view, state) {
   const expanded = groupViewContext(view).expanded.has(group.groupId);
-  const seriesLabel = view === 'catalog-8' || view === 'catalog-9' ? 'series' : ruPlural(group.seriesCount, 'ряд', 'ряда', 'рядов');
+  const seriesLabel = ['catalog-8', 'catalog-9', 'catalog-10'].includes(view) ? 'series' : ruPlural(group.seriesCount, 'ряд', 'ряда', 'рядов');
   return `<article class="catalog6-group" data-group-id="${esc(group.groupId)}"><button class="catalog6-group-head" data-toggle-group aria-expanded="${expanded}"><span><b>${esc(group.name)}</b><code>${esc(group.indicatorCode)}</code><small>${esc(group.taxonomy?.path || [group.taxonomy?.topic?.name, group.taxonomy?.theme?.name, group.taxonomy?.subtheme?.name].filter(Boolean).join(' › '))}</small></span><span><em>${fmt(group.seriesCount)} ${seriesLabel}</em><i>${expanded ? '−' : '+'}</i></span></button><div class="catalog6-group-body" ${expanded ? '' : 'hidden'}>${expanded ? `<div class="catalog-empty">Загрузка ${seriesLabel}…</div>` : ''}</div></article>`;
 }
 
 function groupViewContext(view) {
+  if (view === 'catalog-10') return { expanded: catalog10Expanded, panels: catalog10Panels };
   if (view === 'catalog-9') return { expanded: catalog9Expanded, panels: catalog9Panels };
   if (view === 'catalog-8') return { expanded: catalog8Expanded, panels: catalog8Panels };
   return { expanded: catalog6Expanded, panels: catalog6Panels };
@@ -465,7 +469,7 @@ function groupFacetSelect(key, items, selected) {
 
 function renderGroupPanel(groupId, body, panel, view) {
   const items = panel.items || [];
-  const isAggregatedCatalog = view === 'catalog-8' || view === 'catalog-9';
+  const isAggregatedCatalog = ['catalog-8', 'catalog-9', 'catalog-10'].includes(view);
   const memberLabel = isAggregatedCatalog ? 'Series' : 'Рядов';
   const emptyMemberLabel = isAggregatedCatalog ? 'Series' : 'Ряды';
   const groupLabel = isAggregatedCatalog ? 'индикатора' : 'группы';
@@ -487,7 +491,7 @@ function renderGroupPanel(groupId, body, panel, view) {
 
 async function loadGroupPanel(groupId, body, { view = 'catalog-6', append = false, cursor = null } = {}) {
   const context = groupViewContext(view);
-  const isAggregatedCatalog = view === 'catalog-8' || view === 'catalog-9';
+  const isAggregatedCatalog = ['catalog-8', 'catalog-9', 'catalog-10'].includes(view);
   const panel = context.panels.get(groupId) || { q: '', filters: {}, items: [], cursor: null, facets: null };
   context.panels.set(groupId, panel);
   body.hidden = false;
@@ -712,6 +716,258 @@ async function renderCatalog9() {
   bindGroupCards(resultRoot, view);
 }
 
+let catalog10SpotlightController;
+let catalog10SpotlightTimer;
+let catalog10SpotlightItems = [];
+let catalog10SpotlightIndex = -1;
+
+function catalog10BlockList(state) {
+  const featured = state.collection === 'frequent';
+  return `<aside class="catalog-sidebar catalog5-blocks catalog10-blocks"><div class="catalog-filter-title">Блоки данных</div><div class="catalog5-block-list"><button type="button" data-c10-featured class="catalog-source catalog10-featured ${featured ? 'active' : ''}"><span class="catalog-source-icon">★</span><span>Часто используемые<small>500 индикаторов</small></span><span class="catalog10-pinned">●</span></button><div class="catalog10-block-divider"><span>Все блоки данных</span></div>${blocks.map((block, index) => `<button type="button" data-c10-block="${esc(block.alias)}" class="catalog-source ${state.block === block.alias ? 'active' : ''}"><span class="catalog-source-icon">${String(index + 1).padStart(2, '0')}</span><span>${esc(block.name)}<small>${fmt(block.totalSeries ?? block.availableSeries)} series</small></span><span>›</span></button>`).join('')}</div></aside>`;
+}
+
+function catalog10Breadcrumb(state) {
+  if (state.collection === 'frequent') return '<nav class="catalog9-breadcrumb catalog10-breadcrumb" aria-label="Путь по каталогу"><span class="current">★ Часто используемые</span><span class="catalog10-path-note">500 индикаторов с наибольшим покрытием series</span></nav>';
+  const parts = [state.block
+    ? '<button type="button" data-c10-back="block">Блоки данных</button>'
+    : '<span class="current">Блоки данных</span>'];
+  if (state.block) {
+    const blockName = blocks.find(block => block.alias === state.block)?.name || state.block;
+    parts.push(`<i>›</i>${state.topic ? `<button type="button" data-c10-back="topic">${esc(blockName)}</button>` : `<span class="current">${esc(blockName)}</span>`}`);
+  }
+  if (state.topic) {
+    const topicName = nodeCache.get(`3:${state.topic}`)?.name || state.topic;
+    parts.push(`<i>›</i>${state.theme ? `<button type="button" data-c10-back="theme">${esc(topicName)}</button>` : `<span class="current">${esc(topicName)}</span>`}`);
+  }
+  if (state.theme) {
+    const themeName = nodeCache.get(`3:${state.theme}`)?.name || state.theme;
+    parts.push(`<i>›</i>${state.subtheme ? `<button type="button" data-c10-back="subtheme">${esc(themeName)}</button>` : `<span class="current">${esc(themeName)}</span>`}`);
+  }
+  if (state.subtheme) parts.push(`<i>›</i><span class="current">${esc(nodeCache.get(`3:${state.subtheme}`)?.name || state.subtheme)}</span>`);
+  return `<nav class="catalog9-breadcrumb catalog10-breadcrumb" aria-label="Путь по каталогу">${parts.join('')}</nav>`;
+}
+
+function catalog10HierarchyList(level, items, state) {
+  return `<aside class="catalog-sidebar catalog5-blocks catalog10-blocks"><div class="catalog-filter-title">${LEVEL_LABELS[level]}</div><div class="catalog5-block-list">${items.map((item, index) => `<button type="button" data-c10-level="${level}" data-c10-alias="${esc(item.alias)}" class="catalog-source ${state[level] === item.alias ? 'active' : ''}"><span class="catalog-source-icon">${String(index + 1).padStart(2, '0')}</span><span>${esc(item.name)}<small>${fmt(item.count)} series</small></span><span>›</span></button>`).join('') || '<div class="catalog-empty"><div><b>Нет доступных разделов</b>Для выбранного пути следующий уровень не найден.</div></div>'}</div></aside>`;
+}
+
+function resetCatalog10Groups() {
+  catalog10Expanded.clear();
+  catalog10Panels.clear();
+}
+
+function catalog10BackPatch(target) {
+  if (target === 'block') return { ...clearFilterPatch(), block: null, collection: 'blocks', searchScope: 'block' };
+  const index = GROUP_LEVELS.indexOf(target);
+  const patch = { cursor: null };
+  if (index >= 0) GROUP_LEVELS.slice(index).forEach(level => { patch[level] = null; });
+  return patch;
+}
+
+function catalog10QueryParams(state) {
+  const params = apiParams(state);
+  const globalSearch = state.searchScope === 'global';
+  if (globalSearch) ['block', ...GROUP_LEVELS].forEach(key => { delete params[key]; });
+  else if (state.collection === 'frequent') {
+    delete params.block;
+    GROUP_LEVELS.forEach(key => { delete params[key]; });
+    params.featured = 1;
+  }
+  return { ...params, taxonomy: 3, limit: 50 };
+}
+
+function catalog10SearchBar(state) {
+  const globalSearch = state.searchScope === 'global';
+  return `<div class="catalog10-searchbar"><span class="catalog10-search-icon">⌕</span><input id="catalog10-query" value="${esc(state.q || '')}" placeholder="Поиск по индикаторам и входящим series…" autocomplete="off"><div class="catalog10-search-scope" role="radiogroup" aria-label="Область поиска"><button type="button" role="radio" aria-checked="${globalSearch}" data-c10-scope="global" class="${globalSearch ? 'active' : ''}">Глобальный</button><button type="button" role="radio" aria-checked="${!globalSearch}" data-c10-scope="block" class="${!globalSearch ? 'active' : ''}">Блок данных</button></div><span class="catalog10-count" id="catalog10-count">подготовка…</span></div>`;
+}
+
+function ensureCatalog10Overlays() {
+  if (!document.getElementById('catalog10-spotlight')) {
+    document.body.insertAdjacentHTML('beforeend', `<div class="catalog10-overlay" id="catalog10-spotlight" aria-hidden="true"><section class="catalog10-spotlight-panel" role="dialog" aria-modal="true" aria-label="Быстрый поиск индикаторов"><div class="catalog10-spotlight-search"><span>⌕</span><input id="catalog10-spotlight-input" placeholder="Введите название или мнемонику индикатора" autocomplete="off"><kbd>esc</kbd></div><div class="catalog10-spotlight-results" id="catalog10-spotlight-results"><div class="catalog10-spotlight-empty"><b>Быстрый поиск по всему каталогу</b><span>Начните вводить название или мнемонику индикатора</span></div></div><footer><span>↑↓ выбрать</span><span>enter открыть карточку</span><span>esc закрыть</span></footer></section></div><div class="catalog10-overlay" id="catalog10-indicator-modal" aria-hidden="true"><section class="catalog10-indicator-panel" role="dialog" aria-modal="true" aria-label="Карточка индикатора"><button type="button" class="catalog10-modal-close" data-c10-modal-close aria-label="Закрыть">×</button><div id="catalog10-indicator-content"></div></section></div>`);
+    const spotlight = document.getElementById('catalog10-spotlight');
+    const modal = document.getElementById('catalog10-indicator-modal');
+    spotlight.addEventListener('mousedown', event => { if (event.target === spotlight) closeCatalog10Spotlight(); });
+    modal.addEventListener('mousedown', event => { if (event.target === modal) closeCatalog10IndicatorModal(); });
+    modal.querySelector('[data-c10-modal-close]').addEventListener('click', closeCatalog10IndicatorModal);
+    const input = document.getElementById('catalog10-spotlight-input');
+    input.addEventListener('input', () => scheduleCatalog10Spotlight(input.value));
+    input.addEventListener('keydown', event => {
+      if (event.key === 'ArrowDown') { event.preventDefault(); moveCatalog10Spotlight(1); }
+      if (event.key === 'ArrowUp') { event.preventDefault(); moveCatalog10Spotlight(-1); }
+      if (event.key === 'Enter' && catalog10SpotlightItems[catalog10SpotlightIndex]) {
+        event.preventDefault(); openCatalog10IndicatorModal(catalog10SpotlightItems[catalog10SpotlightIndex].seriesId);
+      }
+    });
+  }
+}
+
+function openCatalog10Spotlight() {
+  ensureCatalog10Overlays();
+  const spotlight = document.getElementById('catalog10-spotlight');
+  const input = document.getElementById('catalog10-spotlight-input');
+  spotlight.classList.add('open');
+  spotlight.setAttribute('aria-hidden', 'false');
+  input.value = '';
+  catalog10SpotlightItems = [];
+  catalog10SpotlightIndex = -1;
+  document.getElementById('catalog10-spotlight-results').innerHTML = '<div class="catalog10-spotlight-empty"><b>Быстрый поиск по всему каталогу</b><span>Начните вводить название или мнемонику индикатора</span></div>';
+  setTimeout(() => input.focus(), 0);
+}
+
+function closeCatalog10Spotlight() {
+  const spotlight = document.getElementById('catalog10-spotlight');
+  if (!spotlight) return;
+  catalog10SpotlightController?.abort();
+  spotlight.classList.remove('open');
+  spotlight.setAttribute('aria-hidden', 'true');
+}
+
+function closeCatalog10IndicatorModal() {
+  const modal = document.getElementById('catalog10-indicator-modal');
+  if (!modal) return;
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden', 'true');
+}
+
+function setCatalog10SpotlightIndex(index) {
+  const buttons = [...document.querySelectorAll('[data-c10-spotlight-result]')];
+  if (!buttons.length) { catalog10SpotlightIndex = -1; return; }
+  catalog10SpotlightIndex = (index + buttons.length) % buttons.length;
+  buttons.forEach((button, buttonIndex) => button.classList.toggle('active', buttonIndex === catalog10SpotlightIndex));
+  buttons[catalog10SpotlightIndex].scrollIntoView({ block: 'nearest' });
+}
+
+function moveCatalog10Spotlight(direction) {
+  setCatalog10SpotlightIndex(catalog10SpotlightIndex + direction);
+}
+
+function scheduleCatalog10Spotlight(value) {
+  clearTimeout(catalog10SpotlightTimer);
+  catalog10SpotlightController?.abort();
+  const query = value.trim();
+  const root = document.getElementById('catalog10-spotlight-results');
+  if (!query) {
+    catalog10SpotlightItems = [];
+    catalog10SpotlightIndex = -1;
+    root.innerHTML = '<div class="catalog10-spotlight-empty"><b>Быстрый поиск по всему каталогу</b><span>Начните вводить название или мнемонику индикатора</span></div>';
+    return;
+  }
+  root.innerHTML = '<div class="catalog10-spotlight-empty"><b>Ищу индикаторы…</b><span>Сопоставляю название, мнемонику и метаданные</span></div>';
+  catalog10SpotlightTimer = setTimeout(async () => {
+    catalog10SpotlightController = new AbortController();
+    try {
+      const response = await catalogApi.suggest(query, catalog10SpotlightController.signal);
+      catalog10SpotlightItems = response.items || [];
+      catalog10SpotlightIndex = catalog10SpotlightItems.length ? 0 : -1;
+      root.innerHTML = catalog10SpotlightItems.length ? `<div class="catalog10-spotlight-section"><span>Индикаторы</span><em>${catalog10SpotlightItems.length}</em></div>${catalog10SpotlightItems.map((item, index) => `<button type="button" class="catalog10-spotlight-item ${index === 0 ? 'active' : ''}" data-c10-spotlight-result="${esc(item.seriesId)}"><span class="catalog10-spotlight-item-icon">↗</span><span><b>${esc(item.name)}</b><small>${esc([item.mnemonic, item.geography?.name, item.frequency?.label].filter(Boolean).join(' · '))}</small></span><code>${esc(item.mnemonic)}</code></button>`).join('')}` : '<div class="catalog10-spotlight-empty"><b>Совпадений не найдено</b><span>Попробуйте другое название или мнемонику</span></div>';
+      root.querySelectorAll('[data-c10-spotlight-result]').forEach(button => {
+        button.addEventListener('mouseenter', () => setCatalog10SpotlightIndex(catalog10SpotlightItems.findIndex(item => String(item.seriesId) === button.dataset.c10SpotlightResult)));
+        button.addEventListener('click', () => openCatalog10IndicatorModal(button.dataset.c10SpotlightResult));
+      });
+    } catch (error) {
+      if (error.name !== 'AbortError') root.innerHTML = `<div class="catalog-error">${esc(error.message)}</div>`;
+    }
+  }, 180);
+}
+
+async function openCatalog10IndicatorModal(seriesId) {
+  ensureCatalog10Overlays();
+  closeCatalog10Spotlight();
+  const modal = document.getElementById('catalog10-indicator-modal');
+  const content = document.getElementById('catalog10-indicator-content');
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+  content.innerHTML = '<div class="catalog-empty"><div><b>Загрузка карточки…</b>Получаю метаданные индикатора.</div></div>';
+  try {
+    const indicator = await catalogApi.indicator(seriesId);
+    const taxonomy = indicator.taxonomy4 || {};
+    content.innerHTML = `<div class="catalog10-modal-kicker">Карточка индикатора</div><h2>${esc(indicator.name)}</h2><code class="catalog10-modal-code">${esc(indicator.mnemonic)}</code><div class="catalog10-modal-grid"><div><small>Источник</small><b>${esc(indicator.source?.label)}</b></div><div><small>География</small><b>${esc(indicator.geography?.name || indicator.geography?.code)}</b></div><div><small>Частота</small><b>${esc(indicator.frequency?.label)}</b></div><div><small>Единица</small><b>${esc(indicator.unit?.code || indicator.unit?.label)}</b></div><div><small>Код показателя</small><b>${esc(indicator.indicatorCode)}</b></div><div><small>Наблюдений</small><b>${fmt(indicator.availability?.observationCount)}</b></div></div><div class="catalog10-modal-path"><small>Тематический путь</small><span>${esc(taxonomy.path || [taxonomy.topic?.name, taxonomy.theme?.name, taxonomy.subtheme?.name, taxonomy.subtheme2?.name].filter(Boolean).join(' › '))}</span></div><div class="catalog10-modal-status">${indicator.availability?.hasTimeSeries ? 'Временной ряд доступен' : 'Доступны классификационные метаданные'}</div>`;
+  } catch (error) {
+    content.innerHTML = `<div class="catalog-error"><b>Карточка не загрузилась.</b> ${esc(error.message)}</div>`;
+  }
+}
+
+async function renderCatalog10() {
+  const view = 'catalog-10';
+  const root = mount(view);
+  const state = currentState(view);
+  if (!state.collection && !state.block) {
+    setState(view, { collection: 'frequent', searchScope: 'block' }, { replace: true });
+    return;
+  }
+  ensureCatalog10Overlays();
+  if (state.block) await ensureCatalog9PathNames(state);
+  const featured = state.collection === 'frequent';
+  const blocksLevel = !state.block;
+  const leftLevel = state.block ? catalog9LeftLevel(state) : 'block';
+  const leftPlaceholder = blocksLevel
+    ? catalog10BlockList(state)
+    : `<aside class="catalog-sidebar catalog5-blocks catalog10-blocks"><div class="catalog-filter-title">${LEVEL_LABELS[leftLevel]}</div><div class="catalog-empty"><div><b>Загрузка разделов…</b>Формирую следующий уровень пути.</div></div></aside>`;
+  const scopeIsGlobal = state.searchScope === 'global';
+  const needsGlobalQuery = scopeIsGlobal && !state.q;
+  const hasScopedResults = featured || Boolean(state.block);
+  const shouldLoad = !needsGlobalQuery && (scopeIsGlobal || hasScopedResults);
+  const resultPlaceholder = needsGlobalQuery
+    ? '<div class="catalog-empty catalog10-start"><div><b>Введите запрос для глобального поиска</b>Поиск будет выполнен по всему каталогу независимо от выбранного блока.</div></div>'
+    : shouldLoad
+      ? '<div class="catalog-empty"><div><b>Подготавливаю компактную выдачу…</b>Агрегирую series в индикаторы.</div></div>'
+      : '<div class="catalog-empty catalog10-start"><div><b>Выберите блок данных</b>После выбора блока появится агрегированная выдача.</div></div>';
+  root.innerHTML = `<div class="catalog10-head"><div><h1 class="h1">Каталог 10</h1><p class="h1-sub">Компактная навигация и быстрый доступ к часто используемым индикаторам</p></div><button type="button" class="catalog10-spotlight-trigger" data-c10-open-spotlight><span>⌕</span>Быстрый поиск <kbd>⌘⇧K</kbd></button></div>${catalog10SearchBar(state)}${catalog10Breadcrumb(state)}<div class="catalog5-layout catalog9-layout catalog10-layout"><div id="catalog10-navigation" class="catalog9-navigation">${leftPlaceholder}</div><main class="catalog-results" id="catalog10-results">${resultPlaceholder}</main><aside class="catalog-sidebar catalog5-filter-sidebar" id="catalog10-filter"><div class="catalog-filter-title">Атрибуты</div><div id="catalog10-filter-content">${shouldLoad ? '<div class="catalog-empty"><div><b>Загрузка атрибутов…</b>Подбираю доступные значения.</div></div>' : '<div class="catalog-empty"><div><b>Фильтры пока недоступны</b>Выберите блок или выполните глобальный поиск.</div></div>'}</div></aside></div>`;
+  root.querySelector('[data-c10-open-spotlight]').addEventListener('click', openCatalog10Spotlight);
+  const input = root.querySelector('#catalog10-query');
+  input.addEventListener('keydown', event => { if (event.key === 'Enter') setState(view, { q: input.value.trim(), cursor: null }); });
+  root.querySelectorAll('[data-c10-scope]').forEach(button => button.addEventListener('click', () => {
+    resetCatalog10Groups();
+    setState(view, { searchScope: button.dataset.c10Scope, cursor: null });
+  }));
+  root.querySelectorAll('[data-c10-back]').forEach(button => button.addEventListener('click', () => {
+    resetCatalog10Groups();
+    setState(view, catalog10BackPatch(button.dataset.c10Back));
+  }));
+  root.querySelector('[data-c10-featured]')?.addEventListener('click', () => {
+    resetCatalog10Groups();
+    setState(view, { ...clearFilterPatch(), block: null, collection: 'frequent', q: null, searchScope: 'block' });
+  });
+  root.querySelectorAll('[data-c10-block]').forEach(button => button.addEventListener('click', () => {
+    resetCatalog10Groups();
+    setState(view, { ...clearFilterPatch(), block: button.dataset.c10Block, collection: null, q: null, searchScope: 'block' });
+  }));
+  if (!shouldLoad) {
+    root.querySelector('#catalog10-count').textContent = needsGlobalQuery ? 'введите запрос' : 'выберите блок';
+    return;
+  }
+
+  const params = catalog10QueryParams(state);
+  const requests = [catalogApi.facets(params), catalogApi.groups(params)];
+  if (state.block) requests.unshift(loadGroupLevel(leftLevel, state));
+  const responses = await Promise.all(requests);
+  const leftItems = state.block ? responses[0] : null;
+  const facetResponse = responses[state.block ? 1 : 0];
+  const groupResponse = responses[state.block ? 2 : 1];
+  if (state.block) {
+    const navigationRoot = root.querySelector('#catalog10-navigation');
+    navigationRoot.innerHTML = catalog10HierarchyList(leftLevel, leftItems, state);
+    navigationRoot.querySelectorAll('[data-c10-level]').forEach(button => button.addEventListener('click', () => {
+      const selectedLevel = button.dataset.c10Level;
+      const patch = { [selectedLevel]: button.dataset.c10Alias, cursor: null };
+      GROUP_LEVELS.slice(GROUP_LEVELS.indexOf(selectedLevel) + 1).forEach(level => { patch[level] = null; });
+      resetCatalog10Groups();
+      setState(view, patch);
+    }));
+  }
+  const facets = facetResponse.facets || {};
+  const filterRoot = root.querySelector('#catalog10-filter-content');
+  filterRoot.innerHTML = facetGroups(view, ATTRIBUTE_DIMENSIONS, facets, state);
+  bindFacetPanels(filterRoot, view);
+  const activeBlock = blocks.find(block => block.alias === state.block);
+  const resultTitle = scopeIsGlobal ? `Глобальный поиск · ${state.q}` : featured ? 'Часто используемые' : activeBlock?.name || 'Индикаторы';
+  const resultRoot = root.querySelector('#catalog10-results');
+  resultRoot.innerHTML = `<div class="catalog-results-head"><b>${esc(resultTitle)}</b><span class="count">${indicatorCount(groupResponse.total)}</span></div>${groupResponse.items?.length ? groupResponse.items.map(group => groupSummary(group, view, state)).join('') : '<div class="catalog-empty"><div><b>Индикаторы не найдены</b>Измените путь, атрибуты или поисковый запрос.</div></div>'}${groupResponse.nextCursor ? `<button class="catalog-loadmore" data-c10-next-cursor="${esc(groupResponse.nextCursor)}">Следующие индикаторы</button>` : ''}`;
+  root.querySelector('#catalog10-count').textContent = indicatorCount(groupResponse.total);
+  resultRoot.querySelector('[data-c10-next-cursor]')?.addEventListener('click', event => setState(view, { cursor: event.currentTarget.dataset.c10NextCursor }));
+  bindGroupCards(resultRoot, view);
+}
+
 function loadCatalog7Layout() {
   try { return { ...DEFAULT_CATALOG7_LAYOUT, ...JSON.parse(localStorage.getItem(CATALOG7_LAYOUT_KEY) || '{}') }; }
   catch { return { ...DEFAULT_CATALOG7_LAYOUT }; }
@@ -859,6 +1115,10 @@ async function renderIndicator() {
 async function render(view) {
   const root = mount(view);
   if (!root) return;
+  if (view !== 'catalog-10') {
+    closeCatalog10Spotlight();
+    closeCatalog10IndicatorModal();
+  }
   root.innerHTML = '<div class="catalog-empty">Загрузка каталога…</div>';
   try {
     await initData();
@@ -874,6 +1134,7 @@ async function render(view) {
     if (view === 'catalog-7') await renderCatalog7();
     if (view === 'catalog-8') await renderCatalog8();
     if (view === 'catalog-9') await renderCatalog9();
+    if (view === 'catalog-10') await renderCatalog10();
     if (view === 'catalog-indicator') await renderIndicator();
   } catch (error) {
     root.innerHTML = `<div class="catalog-error"><b>Каталог не загрузился.</b> ${esc(error.message)}</div>`;
@@ -888,9 +1149,27 @@ async function activateRoute() {
   await render(route.view);
 }
 
+document.addEventListener('keydown', event => {
+  const isCatalog10 = readRoute().view === 'catalog-10';
+  const spotlightOpen = document.getElementById('catalog10-spotlight')?.classList.contains('open');
+  const modalOpen = document.getElementById('catalog10-indicator-modal')?.classList.contains('open');
+  if (isCatalog10 && (event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'k') {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    openCatalog10Spotlight();
+    return;
+  }
+  if (event.key === 'Escape' && (spotlightOpen || modalOpen)) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (modalOpen) closeCatalog10IndicatorModal();
+    else closeCatalog10Spotlight();
+  }
+}, true);
+
 document.addEventListener('click', event => {
   const item = event.target.closest('.nav-item[data-view]');
-  if (!item || !['catalog-1', 'catalog-2', 'catalog-3', 'catalog-4', 'catalog-5', 'catalog-6', 'catalog-7', 'catalog-8', 'catalog-9'].includes(item.dataset.view)) return;
+  if (!item || !['catalog-1', 'catalog-2', 'catalog-3', 'catalog-4', 'catalog-5', 'catalog-6', 'catalog-7', 'catalog-8', 'catalog-9', 'catalog-10'].includes(item.dataset.view)) return;
   event.preventDefault();
   event.stopImmediatePropagation();
   navigate(item.dataset.view, currentState(item.dataset.view));

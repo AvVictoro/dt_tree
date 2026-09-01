@@ -26,6 +26,10 @@ async function loadFixture() {
         block.name = displayBlockName(block.alias, block.sourceName);
       }
     });
+    data.featuredGroupIds = new Set(groupSeries(data.indicators)
+      .sort((a, b) => b.series.length - a.series.length || a.groupId.localeCompare(b.groupId, 'ru'))
+      .slice(0, 500)
+      .map(group => group.groupId));
     return data;
   });
   return fixturePromise;
@@ -201,10 +205,13 @@ export async function handleCatalogRequest({ method = 'GET', pathname, searchPar
     const groupedTaxonomy = searchParams.get('taxonomy') === '3';
     const dimensions = groupedTaxonomy ? GROUP_DIMENSIONS : DIMENSIONS;
     const labels = groupedTaxonomy ? GROUP_FACET_LABELS : FACET_LABELS;
+    const sourceIndicators = searchParams.get('featured') === '1'
+      ? data.indicators.filter(indicator => data.featuredGroupIds.has(getIndicatorGroupId(indicator)))
+      : data.indicators;
     const facets = {};
     for (const [key, getter] of Object.entries(dimensions)) {
       const count = new Map();
-      for (const indicator of (groupedTaxonomy ? applyGroupFilters(data.indicators, searchParams, key) : applyFilters(data.indicators, searchParams, key))) {
+      for (const indicator of (groupedTaxonomy ? applyGroupFilters(sourceIndicators, searchParams, key) : applyFilters(sourceIndicators, searchParams, key))) {
         for (const value of getter(indicator).filter(Boolean)) {
           const current = count.get(value) || { value, label: labels[key]?.(indicator, value) || value, count: 0 };
           current.count += 1;
@@ -221,7 +228,8 @@ export async function handleCatalogRequest({ method = 'GET', pathname, searchPar
   }
 
   if (route === 'groups') {
-    const filtered = applyGroupFilters(data.indicators, searchParams);
+    let filtered = applyGroupFilters(data.indicators, searchParams);
+    if (searchParams.get('featured') === '1') filtered = filtered.filter(indicator => data.featuredGroupIds.has(getIndicatorGroupId(indicator)));
     const query = searchParams.get('q') || '';
     const exactSeries = data.mnemonicIndex.get(query.toLocaleLowerCase('ru-RU'));
     const exactGroupId = exactSeries ? getIndicatorGroupId(exactSeries) : null;

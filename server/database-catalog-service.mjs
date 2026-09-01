@@ -80,14 +80,33 @@ const CARD_SELECT = `
   LEFT JOIN catalog_taxonomy_node ns2 ON ns2.dataset_version_id=i.dataset_version_id AND ns2.taxonomy_levels=4 AND ns2.level=4 AND ns2.alias=t.subtheme2_alias
   LEFT JOIN LATERAL (SELECT jsonb_agg(jsonb_build_object('alias',ib.block_alias,'name',b.name,'role',ib.role) ORDER BY ib.role) all_blocks FROM catalog_indicator_block ib JOIN catalog_data_block b ON b.dataset_version_id=ib.dataset_version_id AND b.alias=ib.block_alias WHERE ib.dataset_version_id=i.dataset_version_id AND ib.series_id=i.series_id) bl ON true`;
 
-const BASE_INDICATOR_KEY_SQL = `CASE
-  WHEN position(',' in i.mnemonic)>0 THEN btrim(split_part(i.mnemonic, ',', 1))
-  WHEN nullif(btrim(i.indicator_code),'') IS NOT NULL THEN btrim(i.indicator_code)
-  WHEN position('.' in i.mnemonic)>0 THEN btrim(split_part(i.mnemonic, '.', 1))
-  ELSE coalesce(nullif(btrim(i.mnemonic),''),i.series_id::text)
-END`;
-const GROUP_PATH_KEY_SQL = `coalesce(nullif(t.path_id,''),concat_ws('|',t.topic_alias,t.theme_alias,t.subtheme_alias),'unclassified')`;
-const GROUP_ID_SQL = `((${BASE_INDICATOR_KEY_SQL}) || '::' || (${GROUP_PATH_KEY_SQL}))`;
+function baseIndicatorKeySql(alias = 'i') {
+  return `CASE
+    WHEN position(',' in ${alias}.mnemonic)>0 THEN btrim(split_part(${alias}.mnemonic, ',', 1))
+    WHEN nullif(btrim(${alias}.indicator_code),'') IS NOT NULL THEN btrim(${alias}.indicator_code)
+    WHEN position('.' in ${alias}.mnemonic)>0 THEN btrim(split_part(${alias}.mnemonic, '.', 1))
+    ELSE coalesce(nullif(btrim(${alias}.mnemonic),''),${alias}.series_id::text)
+  END`;
+}
+
+function groupPathKeySql(alias = 't') {
+  return `coalesce(nullif(${alias}.path_id,''),concat_ws('|',${alias}.topic_alias,${alias}.theme_alias,${alias}.subtheme_alias),'unclassified')`;
+}
+
+function groupIdSql(indicatorAlias = 'i', taxonomyAlias = 't') {
+  return `((${baseIndicatorKeySql(indicatorAlias)}) || '::' || (${groupPathKeySql(taxonomyAlias)}))`;
+}
+
+const BASE_INDICATOR_KEY_SQL = baseIndicatorKeySql();
+const GROUP_ID_SQL = groupIdSql();
+const FEATURED_GROUPS_CTE = `featured_source AS (
+    SELECT ${groupIdSql('fi', 'ft')} group_id
+    FROM catalog_indicator fi
+    JOIN catalog_indicator_taxonomy ft ON ft.dataset_version_id=fi.dataset_version_id AND ft.series_id=fi.series_id AND ft.taxonomy_levels=3
+    WHERE fi.dataset_version_id=(SELECT id FROM catalog_dataset_version WHERE status='active')
+  ), featured_groups AS (
+    SELECT group_id FROM featured_source GROUP BY group_id ORDER BY count(*) DESC,group_id LIMIT 500
+  )`;
 
 function groupMemberClause(parameterIndex) {
   const path = `coalesce(nullif(t3.path_id,''),concat_ws('|',t3.topic_alias,t3.theme_alias,t3.subtheme_alias),'unclassified')`;
@@ -120,6 +139,7 @@ export async function handleDatabaseCatalogRequest({ method = 'GET', pathname, s
     return json({ level, taxonomy: String(taxonomy), items: rows.map(row => ({ ...row, count: Number(row.count) })) });
   }
   if (route === 'groups') {
+    const featured = searchParams.get('featured') === '1';
     const f = filters(searchParams, { omit: 'q' });
     const query = searchParams.get('q')?.trim();
     const queryIndex = f.args.length + 1;
@@ -129,7 +149,7 @@ export async function handleDatabaseCatalogRequest({ method = 'GET', pathname, s
     const groupArgs = query ? [...f.args, query] : f.args;
     const limit = Math.min(100, Math.max(1, Number(searchParams.get('limit') || 30)));
     const offset = decodeCursor(searchParams.get('cursor'));
-    const { rows } = await db.query(`WITH filtered AS (
+    const { rows } = await db.query(`WITH ${featured ? `${FEATURED_GROUPS_CTE},` : ''} filtered AS (
       SELECT ${GROUP_ID_SQL} group_id,${BASE_INDICATOR_KEY_SQL} indicator_code,i.name,t.path_id,t.path_name,t.topic_alias,t.theme_alias,t.subtheme_alias,${searchMatch} search_match,
         nt.name topic_name,nth.name theme_name,ns.name subtheme_name
       FROM catalog_indicator i
@@ -137,7 +157,7 @@ export async function handleDatabaseCatalogRequest({ method = 'GET', pathname, s
       LEFT JOIN catalog_taxonomy_node nt ON nt.dataset_version_id=i.dataset_version_id AND nt.taxonomy_levels=3 AND nt.level=1 AND nt.alias=t.topic_alias
       LEFT JOIN catalog_taxonomy_node nth ON nth.dataset_version_id=i.dataset_version_id AND nth.taxonomy_levels=3 AND nth.level=2 AND nth.alias=t.theme_alias
       LEFT JOIN catalog_taxonomy_node ns ON ns.dataset_version_id=i.dataset_version_id AND ns.taxonomy_levels=3 AND ns.level=3 AND ns.alias=t.subtheme_alias
-      WHERE ${f.sql}
+      WHERE ${f.sql}${featured ? ` AND ${GROUP_ID_SQL} IN (SELECT group_id FROM featured_groups)` : ''}
     ), grouped AS (
       SELECT group_id,indicator_code,mode() WITHIN GROUP (ORDER BY name) name,min(path_id) path_id,min(path_name) path_name,
         min(topic_alias) topic_alias,min(topic_name) topic_name,min(theme_alias) theme_alias,min(theme_name) theme_name,

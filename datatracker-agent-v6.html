@@ -9299,6 +9299,7 @@
       <div class="nav-item" data-view="catalog-7"><span class="ic">⊞</span> Каталог 7</div>
       <div class="nav-item" data-view="catalog-8"><span class="ic">◈</span> Каталог 8</div>
       <div class="nav-item" data-view="catalog-9"><span class="ic">⌁</span> Каталог 9</div>
+      <div class="nav-item" data-view="catalog-10"><span class="ic">★</span> Каталог 10</div>
       <div id="pinned-workspaces-list" hidden></div>
       <div id="fav-list" hidden></div>
 
@@ -9635,6 +9636,7 @@
         <section class="view" id="view-catalog-7"><div class="catalog-experiment" id="catalog-mount-catalog-7"></div></section>
         <section class="view" id="view-catalog-8"><div class="catalog-experiment" id="catalog-mount-catalog-8"></div></section>
         <section class="view" id="view-catalog-9"><div class="catalog-experiment" id="catalog-mount-catalog-9"></div></section>
+        <section class="view" id="view-catalog-10"><div class="catalog-experiment" id="catalog-mount-catalog-10"></div></section>
         <section class="view" id="view-catalog-indicator"><div class="catalog-experiment" id="catalog-mount-catalog-indicator"></div></section>
 
 
@@ -12495,6 +12497,7 @@
       'catalog-7': { label: 'Рабочая область индикаторов', sugg: [] },
       'catalog-8': { label: 'Агрегированный каталог внутри блока', sugg: [] },
       'catalog-9': { label: 'Последовательный агрегированный каталог', sugg: [] },
+      'catalog-10': { label: 'Компактный каталог и быстрый поиск', sugg: [] },
       'catalog-indicator': { label: 'Карточка индикатора', sugg: [] },
       indicator: { label: 'Индикатор', sugg: ['Построй ARIMA-прогноз', 'Корреляция с ликвидностью', 'Чем отличается от прогноза ФК?'] },
       workspace: { label: 'Рабочая область', sugg: ['Сравни динамику графиков', 'Собери выводы', 'Добавь прогноз ОФЗ на 6 мес'] },
@@ -12519,6 +12522,7 @@
   'catalog-7': 'Каталог 7',
   'catalog-8': 'Каталог 8',
   'catalog-9': 'Каталог 9',
+  'catalog-10': 'Каталог 10',
   'catalog-indicator': 'Каталог / Индикатор',
   indicator: 'Индикатор',
   workspace: 'Рабочие области',
@@ -14231,8 +14235,9 @@
 
       const appEl = document.querySelector('.app');
       appEl.classList.remove('mobile-sidebar-open', 'mobile-copilot-open');
+      appEl.classList.toggle('catalog10-active', view === 'catalog-10');
       if (window.matchMedia('(max-width: 900px)').matches) applyShellPanelState(readShellPanelState());
-      if (view === 'chat' || view === 'catalog-1' || view === 'catalog-2' || view === 'catalog-3' || view === 'catalog-4' || view === 'catalog-5' || view === 'catalog-6' || view === 'catalog-7' || view === 'catalog-8' || view === 'catalog-9' || view === 'catalog-indicator') {
+      if (view === 'chat' || view === 'catalog-1' || view === 'catalog-2' || view === 'catalog-3' || view === 'catalog-4' || view === 'catalog-5' || view === 'catalog-6' || view === 'catalog-7' || view === 'catalog-8' || view === 'catalog-9' || view === 'catalog-10' || view === 'catalog-indicator') {
         appEl.classList.add('hide-copilot');
       } else {
         appEl.classList.remove('hide-copilot');
@@ -14246,7 +14251,7 @@
 
       if (view === 'home') { renderHome(); }
       if (view === 'catalog') { renderTree(document.getElementById('cat-input').value); updateSelbar(); }
-      if ((view === 'catalog-1' || view === 'catalog-2' || view === 'catalog-3' || view === 'catalog-4' || view === 'catalog-5' || view === 'catalog-6' || view === 'catalog-7' || view === 'catalog-8' || view === 'catalog-9' || view === 'catalog-indicator') && window.catalogApp) { window.catalogApp.render(view); }
+      if ((view === 'catalog-1' || view === 'catalog-2' || view === 'catalog-3' || view === 'catalog-4' || view === 'catalog-5' || view === 'catalog-6' || view === 'catalog-7' || view === 'catalog-8' || view === 'catalog-9' || view === 'catalog-10' || view === 'catalog-indicator') && window.catalogApp) { window.catalogApp.render(view); }
       if (view === 'indicator') { renderIndChart(); }
       if (view === 'workspace') {/* render ws detail is handled by openWorkspaceDetail */ }
       if (view === 'workspaces') { renderWorkspacesList(); }
