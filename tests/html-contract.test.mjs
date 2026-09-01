@@ -82,8 +82,10 @@ test('catalog 10 adds featured indicators, scoped search and spotlight modal', a
   assert.match(source, /async function openCatalog10IndicatorModal/);
   assert.match(source, /event\.shiftKey && event\.key\.toLowerCase\(\) === 'k'/);
   assert.match(source, /params\.featured = 1/);
+  assert.doesNotMatch(source, /Все блоки данных/);
   const html = await fs.readFile(new URL('../datatracker-agent-v6.html', import.meta.url), 'utf8');
   assert.match(html, /catalog10-active/);
+  assert.match(html, /<div class="top-actions">\s*<button[^>]+data-c10-open-spotlight/);
 });
 
 test('catalog 4 combines sequential navigation with prefiltered search mode', async () => {
